@@ -8,6 +8,7 @@ import os
 import os.path
 import random
 
+from PIL import Image
 import numpy as np
 import torch
 import torch.utils.data as data
@@ -127,14 +128,13 @@ class CoviarDataSet(data.Dataset):
             video_path, label, num_frames = self._video_list[index]
 
         frames = []
-        print(index, self._num_segments)
         for seg in range(self._num_segments):
 
             if self._is_train:
                 gop_index, gop_pos = self._get_train_frame_index(num_frames, seg)
             else:
                 gop_index, gop_pos = self._get_test_frame_index(num_frames, seg)
-            print(f'gop_index, {gop_index}, gop_pos, {gop_pos}')
+            print(f'[dataset] gop_index, {gop_index}, gop_pos, {gop_pos}')
             img = load(video_path, gop_index, gop_pos,
                        representation_idx, self._accumulate)
 
@@ -157,6 +157,7 @@ class CoviarDataSet(data.Dataset):
                 img = img[..., ::-1]
 
             frames.append(img)
+            break
 
         # frames = self._transform(frames)
 
@@ -193,6 +194,15 @@ if __name__ == '__main__':
     batch_size=1, shuffle=False)
     x, y = next(iter(data_loader))
     print(x.shape, x.dtype, x.min(), x.max())
-    from PIL import Image
     for i, k in enumerate(x[0].numpy()):
         res = Image.fromarray(k).save(f"{i}.png")
+    # f = open('1.txt')
+    # xs = []
+    # for line in f.readlines():
+    #     a, b, c = line.strip().split(',')
+    #     xs.append([int(a), int(b), int(c)])
+    # print('xs:', len(xs))
+    # xs = np.array(xs)
+    # print(xs.shape)
+    # xs = xs.reshape([256, 340, 3]).astype(np.uint8)[..., ::-1]
+    # Image.fromarray(xs).save(f"np.png")

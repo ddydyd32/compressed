@@ -29,7 +29,6 @@ static PyObject *CoviarError;
 
 void create_and_load_bgr(AVFrame *pFrame, AVFrame *pFrameBGR, uint8_t *buffer,
     PyArrayObject ** arr, int cur_pos, int pos_target) {
-    fprintf(stderr, "[create_and_load_bgr] cur_pos: %d pos_target: %d \n", cur_pos, pos_target);
     int numBytes = avpicture_get_size(AV_PIX_FMT_BGR24, pFrame->width, pFrame->height);
     buffer = (uint8_t*) av_malloc(numBytes * sizeof(uint8_t));
     avpicture_fill((AVPicture*) pFrameBGR, buffer, AV_PIX_FMT_BGR24, pFrame->width, pFrame->height);
@@ -63,6 +62,15 @@ void create_and_load_bgr(AVFrame *pFrame, AVFrame *pFrameBGR, uint8_t *buffer,
     } else {
         array_idx = 0;
     }
+    // fprintf(stderr, "[create_and_load_bgr] height: %d width: %d linesize: %d\n", height, pFrame->width, linesize);
+    // for (int y = 0; y < pFrame->height; y++){
+    //     for (int x = 0; x < pFrame->width; x++){
+    //         printf("%d,", src[y * pFrame->width * 3 + x * 3 + 0]);
+    //         printf("%d,", src[y * pFrame->width * 3 + x * 3 + 1]);
+    //         printf("%d\n", src[y * pFrame->width * 3 + x * 3 + 2]);
+    //     }
+    // }
+    // printf("\n");
     memcpy(dest + array_idx * stride_0, src, height * linesize * sizeof(uint8_t));
     av_free(buffer);
 }
@@ -84,7 +92,6 @@ void create_and_load_mv_residual(
 
     int p_dst_x, p_dst_y, p_src_x, p_src_y, val_x, val_y;
     const AVMotionVector *mvs = (const AVMotionVector *)sd->data;
-    fprintf(stderr, '[create_and_load_mv_residual] [height] %d [width] %d [cur_pos] %d\n', height, width, cur_pos);
 
     for (int i = 0; i < sd->size / sizeof(*mvs); i++) {
         const AVMotionVector *mv = &mvs[i];
@@ -278,7 +285,6 @@ int decode_video(
             }
 
             if (cur_gop == gop_target && cur_pos <= pos_target) {
-                fprintf(stderr, "[decode_video] cur_gop: %d cur_pos: %d\n", cur_gop, cur_pos);
                 ret = avcodec_decode_video2(pCodecCtx, pFrame, &got_picture, &packet);  
                 if (ret < 0) {  
                     printf("Decode Error.\n");  
@@ -335,7 +341,6 @@ int decode_video(
                     if ((cur_pos == 0              && accumulate  && representation == RESIDUAL) ||
                         (cur_pos == pos_target - 1 && !accumulate && representation == RESIDUAL) ||
                         cur_pos == pos_target) {
-                        fprintf(stderr, "[decode_video] [create_and_load_bgr] cur_gop: %d cur_pos: %d\n", cur_gop, cur_pos);
                         create_and_load_bgr(
                             pFrame, pFrameBGR, buffer, bgr_arr, cur_pos, pos_target);
                     }

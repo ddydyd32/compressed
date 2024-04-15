@@ -62,3 +62,4 @@ for i, d in enumerate(iter(dataset)):
     res = (np.minimum(np.maximum(res, 0), 255)).astype(np.uint8)
     res = Image.fromarray(res).save(f"t/idx_{i}_res_{os.path.basename(d['filename'])[:-4]}.png")
 
+    # https://docs.opencv.org/4.x/d4/dee/tutorial_optical_flow.html
