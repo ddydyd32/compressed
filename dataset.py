@@ -64,7 +64,7 @@ class MPEG4(Dataset):
             if t in {'mv', 'res'} and video['frame_idx'] % self.GOP_SIZE == 0:
                 x[t] = np.zeros(x['iframe']['tensor'].shape, dtype=np.int32)[:, :, :2 if t == 'mv' else 3]
             else:
-                print(f'[{t}] load args:', video[t]['gop_index'], video[t]['gop_pos'], i, self.accumulate, video['filename'])
+                # print(f'\n[{t}] load args:', video[t]['gop_index'], video[t]['gop_pos'], i, self.accumulate, video['filename'])
                 x[t] = load_mpeg4(video['filename'], video[t]['gop_index'], video[t]['gop_pos'], i, self.accumulate)
             x[t] = {
                 'tensor': torch.tensor(x[t]),

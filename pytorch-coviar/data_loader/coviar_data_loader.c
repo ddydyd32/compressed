@@ -62,7 +62,7 @@ void create_and_load_bgr(AVFrame *pFrame, AVFrame *pFrameBGR, uint8_t *buffer,
     } else {
         array_idx = 0;
     }
-    // fprintf(stderr, "[create_and_load_bgr] height: %d width: %d linesize: %d\n", height, pFrame->width, linesize);
+    // fprintf(stdout, "[create_and_load_bgr] height: %d width: %d linesize: %d\n", height, pFrame->width, linesize);
     // for (int y = 0; y < pFrame->height; y++){
     //     for (int x = 0; x < pFrame->width; x++){
     //         printf("%d,", src[y * pFrame->width * 3 + x * 3 + 0]);
@@ -169,15 +169,24 @@ void create_and_load_mv_residual(
                         src_x = x - (*((int32_t*)PyArray_GETPTR3(mv_arr, y, x, 0)));
                         src_y = y - (*((int32_t*)PyArray_GETPTR3(mv_arr, y, x, 1)));
                     }
-                    fprintf(stderr, '[create_and_load_mv_residual] [x] %d [y] %d [src_x] %d [src_y] %d\n', x, y, src_x, src_y);
+                    if((x != src_x || y != src_y)){
+                    }
                     location_src = src_y * stride_1 + src_x * stride_2;
 
                     location = y * stride_1 + x * stride_2; 
                     for (c = 0; c < 3; ++c) {
-                        location2 = stride_0 + location;
+                        location2 = stride_0 + location; // should this be from reference iframe? Is this l2 last frame?
                         res_data[location] =  (int32_t) bgr_data[location2]
                                             - (int32_t) bgr_data[location_src + c];
                         location += 1;
+                    }
+                    if((x != src_x || y != src_y) && (res_data[location-3] != 0 || res_data[location-2] != 0 ||res_data[location-1] != 0)){
+                        fprintf(stdout, "[RESIDUAL] [x, y] [%d, %d] [src_x, y] [%d, %d]", x, y, src_x, src_y);
+                        int l1 = y * stride_1 + x * stride_2;
+                        int l2 = stride_0 + l1; // should this be from reference iframe? Is this last frame?
+                        fprintf(stdout, " [img] [%d, %d, %d]", (int32_t) bgr_data[l2], (int32_t) bgr_data[l2+1], (int32_t) bgr_data[l2+2]);
+                        fprintf(stdout, " - [iframe] [%d, %d, %d]", (int32_t) bgr_data[location_src], (int32_t) bgr_data[location_src+1], (int32_t) bgr_data[location_src+2]);
+                        fprintf(stdout, " = [res] [%d, %d, %d]\n", res_data[l1], res_data[l1+1], res_data[l1+2]);
                     }
                 }
             }
@@ -351,7 +360,7 @@ int decode_video(
                         sd = av_frame_get_side_data(pFrame, AV_FRAME_DATA_MOTION_VECTORS);
                         if (sd) {
                             if (accumulate || cur_pos == pos_target) {
-                                fprintf(stderr, "[decode_video] [create_and_load_mv_residual] cur_gop: %d cur_pos: %d\n", cur_gop, cur_pos);
+                                fprintf(stdout, "[decode_video] [create_and_load_mv_residual] cur_gop: %d cur_pos: %d\n", cur_gop, cur_pos);
                                 create_and_load_mv_residual(
                                     sd, 
                                     *bgr_arr, *mv_arr, *res_arr,

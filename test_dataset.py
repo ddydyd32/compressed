@@ -8,16 +8,16 @@ from coviar import load as load_mpeg4
 import os
 os.makedirs('t', exist_ok=True)
 
-filenames = Path('/home/v-dongyaozhu/compressed/pytorch-coviar/data/hmdb51/mpeg4_videos/brush_hair/').glob('*mp4')
+filenames = Path('pytorch-coviar/data/hmdb51/mpeg4_videos/brush_hair/').glob('*mp4')
 filenames = list(sorted(map(str, filenames)))[:1]
 
 dataset = MPEG4(filenames, accumulate=True, GOP_SIZE=12)
 loader = DataLoader(dataset, shuffle=False)
 
 for i, d in enumerate(iter(dataset)):
-    if i > 4:
+    if i > 1:
         break
-    print(f"\n[{i} / {d['num_frames']}]")
+    print(f"\n[frame {i} / {d['num_frames']}]")
     for k, v in d.items():
         if type(v) in [str, int]:
             continue

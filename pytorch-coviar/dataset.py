@@ -182,9 +182,9 @@ class CoviarDataSet(data.Dataset):
 if __name__ == '__main__':
     data_loader = torch.utils.data.DataLoader(
     CoviarDataSet(
-        '/home/v-dongyaozhu/compressed/pytorch-coviar/data/hmdb51/mpeg4_videos',
+        'pytorch-coviar/data/hmdb51/mpeg4_videos',
         'hmdb51',
-        video_list='/home/v-dongyaozhu/compressed/pytorch-coviar/data/datalists/hmdb51_split1_test.txt',
+        video_list='pytorch-coviar/data/datalists/hmdb51_split1_test.txt',
         num_segments=3,
         representation='iframe',
         transform=None,

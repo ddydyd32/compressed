@@ -1,6 +1,6 @@
 from distutils.core import setup, Extension
 import numpy as np
-FFMPEG = '/home/v-dongyaozhu/FFmpeg'
+FFMPEG = '/home/dyz/FFmpeg'
 coviar_utils_module = Extension('coviar',
 		sources = ['coviar_data_loader.c'],
 		include_dirs=[np.get_include(), f'{FFMPEG}/include/'],
