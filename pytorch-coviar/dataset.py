@@ -127,13 +127,14 @@ class CoviarDataSet(data.Dataset):
             video_path, label, num_frames = self._video_list[index]
 
         frames = []
+        print(index, self._num_segments)
         for seg in range(self._num_segments):
 
             if self._is_train:
                 gop_index, gop_pos = self._get_train_frame_index(num_frames, seg)
             else:
                 gop_index, gop_pos = self._get_test_frame_index(num_frames, seg)
-
+            print(f'gop_index, {gop_index}, gop_pos, {gop_pos}')
             img = load(video_path, gop_index, gop_pos,
                        representation_idx, self._accumulate)
 
@@ -150,27 +151,48 @@ class CoviarDataSet(data.Dataset):
                     img = (np.minimum(np.maximum(img, 0), 255)).astype(np.uint8)
 
             if self._representation == 'iframe':
-                img = color_aug(img)
+                # img = color_aug(img)
 
                 # BGR to RGB. (PyTorch uses RGB according to doc.)
                 img = img[..., ::-1]
 
             frames.append(img)
 
-        frames = self._transform(frames)
+        # frames = self._transform(frames)
 
         frames = np.array(frames)
-        frames = np.transpose(frames, (0, 3, 1, 2))
-        input = torch.from_numpy(frames).float() / 255.0
+        input = frames
+        # frames = np.transpose(frames, (0, 3, 1, 2))
+        # input = torch.from_numpy(frames).float() / 255.0
 
-        if self._representation == 'iframe':
-            input = (input - self._input_mean) / self._input_std
-        elif self._representation == 'residual':
-            input = (input - 0.5) / self._input_std
-        elif self._representation == 'mv':
-            input = (input - 0.5)
+        # if self._representation == 'iframe':
+        #     input = (input - self._input_mean) / self._input_std
+        # elif self._representation == 'residual':
+        #     input = (input - 0.5) / self._input_std
+        # elif self._representation == 'mv':
+        #     input = (input - 0.5)
 
         return input, label
 
     def __len__(self):
         return len(self._video_list)
+
+
+if __name__ == '__main__':
+    data_loader = torch.utils.data.DataLoader(
+    CoviarDataSet(
+        '/home/v-dongyaozhu/compressed/pytorch-coviar/data/hmdb51/mpeg4_videos',
+        'hmdb51',
+        video_list='/home/v-dongyaozhu/compressed/pytorch-coviar/data/datalists/hmdb51_split1_test.txt',
+        num_segments=3,
+        representation='iframe',
+        transform=None,
+        is_train=False,
+        accumulate=1,
+        ),
+    batch_size=1, shuffle=False)
+    x, y = next(iter(data_loader))
+    print(x.shape, x.dtype, x.min(), x.max())
+    from PIL import Image
+    for i, k in enumerate(x[0].numpy()):
+        res = Image.fromarray(k).save(f"{i}.png")
