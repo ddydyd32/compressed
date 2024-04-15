@@ -31,7 +31,8 @@ for i, d in enumerate(iter(dataset)):
     mv = d['mv']
     res = d['res'][..., ::-1]
     height, width, _ = img.shape
-    print('diff:', iframe.mean() + res.mean())
+    print('iframe+res:', iframe.mean() + res.mean())
+    print('img:', img.mean())
 
     yv, xv = np.meshgrid(range(width), range(height))
     dx, dy = mv[:, :, 0], mv[:, :, 1]

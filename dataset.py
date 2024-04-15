@@ -50,7 +50,7 @@ class MPEG4(Dataset):
                         'type': i
                     }
                 self.frames.append(v)
-            print('reading...filename:', f, 'num frames:', num_frames)
+            print('\nreading...filename:', f, 'num frames:', num_frames)
 
     def __getitem__(self, idx):
         video = self.frames[idx]
