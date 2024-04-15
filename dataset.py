@@ -57,8 +57,8 @@ class MPEG4(Dataset):
         x = {
             'filename': video['filename'],
             'num_frames': video['num_frames'],
-            'gop_index': get_gop_pos(idx, 0, self.GOP_SIZE)[0],
-            'gop_pos': get_gop_pos(idx, 0, self.GOP_SIZE)[1],
+            'gop_index': get_gop_pos(idx, 'img', self.GOP_SIZE)[0],
+            'gop_pos': get_gop_pos(idx, 'img', self.GOP_SIZE)[1],
         }
         for t, i in self.types.items():
             if t in {'mv', 'res'} and video['frame_idx'] % self.GOP_SIZE == 0:
