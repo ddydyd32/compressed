@@ -28,7 +28,7 @@ static PyObject *CoviarError;
 
 
 void create_and_load_bgr(AVFrame *pFrame, AVFrame *pFrameBGR, uint8_t *buffer,
-    PyArrayObject ** arr, int cur_pos, int pos_target) {
+    PyArrayObject ** arr, int cur_pos, int pos_target, bool is_iframe) {
     int numBytes = avpicture_get_size(AV_PIX_FMT_BGR24, pFrame->width, pFrame->height);
     buffer = (uint8_t*) av_malloc(numBytes * sizeof(uint8_t));
     avpicture_fill((AVPicture*) pFrameBGR, buffer, AV_PIX_FMT_BGR24, pFrame->width, pFrame->height);
@@ -71,7 +71,10 @@ void create_and_load_bgr(AVFrame *pFrame, AVFrame *pFrameBGR, uint8_t *buffer,
     //     }
     // }
     // printf("\n");
-    memcpy(dest + array_idx * stride_0, src, height * linesize * sizeof(uint8_t));
+    printf("[create_and_load_bgr] array_idx: %d, is_iframe: %s\n", array_idx, is_iframe?"True":"False");
+    if (array_idx == 1 || is_iframe) {
+        memcpy(dest + array_idx * stride_0, src, height * linesize * sizeof(uint8_t));
+    }
     av_free(buffer);
 }
 
@@ -169,24 +172,22 @@ void create_and_load_mv_residual(
                         src_x = x - (*((int32_t*)PyArray_GETPTR3(mv_arr, y, x, 0)));
                         src_y = y - (*((int32_t*)PyArray_GETPTR3(mv_arr, y, x, 1)));
                     }
-                    if((x != src_x || y != src_y)){
-                    }
+
                     location_src = src_y * stride_1 + src_x * stride_2;
 
                     location = y * stride_1 + x * stride_2; 
                     for (c = 0; c < 3; ++c) {
-                        location2 = stride_0 + location; // should this be from reference iframe? Is this l2 last frame?
-                        res_data[location] =  (int32_t) bgr_data[location2]
-                                            - (int32_t) bgr_data[location_src + c];
-                        location += 1;
+                        // should this be from reference iframe? Is this l2 last frame?
+                        res_data[location + c] = (int32_t) bgr_data[location + stride_0 + c]
+                                               - (int32_t) bgr_data[location_src + c];
                     }
-                    if((x != src_x || y != src_y) && (res_data[location-3] != 0 || res_data[location-2] != 0 ||res_data[location-1] != 0)){
-                        fprintf(stdout, "[RESIDUAL] [x, y] [%d, %d] [src_x, y] [%d, %d]", x, y, src_x, src_y);
+                    if((x != src_x || y != src_y) && (res_data[location] != 0 || res_data[location+1] != 0 ||res_data[location+2] != 0)){
+                        // fprintf(stdout, "[RESIDUAL] [x, y] [%d, %d] [src_x, y] [%d, %d]", x, y, src_x, src_y);
                         int l1 = y * stride_1 + x * stride_2;
-                        int l2 = stride_0 + l1; // should this be from reference iframe? Is this last frame?
-                        fprintf(stdout, " [img] [%d, %d, %d]", (int32_t) bgr_data[l2], (int32_t) bgr_data[l2+1], (int32_t) bgr_data[l2+2]);
-                        fprintf(stdout, " - [iframe] [%d, %d, %d]", (int32_t) bgr_data[location_src], (int32_t) bgr_data[location_src+1], (int32_t) bgr_data[location_src+2]);
-                        fprintf(stdout, " = [res] [%d, %d, %d]\n", res_data[l1], res_data[l1+1], res_data[l1+2]);
+                        int l2 = l1 + stride_0; // should this be from reference iframe? Is this last frame?
+                        // fprintf(stdout, " [img] [%d, %d, %d]", (int32_t) bgr_data[l2], (int32_t) bgr_data[l2+1], (int32_t) bgr_data[l2+2]);
+                        // fprintf(stdout, " - [iframe] [%d, %d, %d]", (int32_t) bgr_data[location_src], (int32_t) bgr_data[location_src+1], (int32_t) bgr_data[location_src+2]);
+                        // fprintf(stdout, " = [res] [%d, %d, %d]\n", res_data[l1], res_data[l1+1], res_data[l1+2]);
                     }
                 }
             }
@@ -350,8 +351,9 @@ int decode_video(
                     if ((cur_pos == 0              && accumulate  && representation == RESIDUAL) ||
                         (cur_pos == pos_target - 1 && !accumulate && representation == RESIDUAL) ||
                         cur_pos == pos_target) {
+                        printf("[call create_and_load_bgr 0] %d\n", cur_pos);
                         create_and_load_bgr(
-                            pFrame, pFrameBGR, buffer, bgr_arr, cur_pos, pos_target);
+                            pFrame, pFrameBGR, buffer, bgr_arr, cur_pos, pos_target, pCodecParserCtx->pict_type == AV_PICTURE_TYPE_I);
                     }
 
                     if (representation == MV || 
@@ -396,8 +398,9 @@ int decode_video(
             if ((cur_pos == 0 && accumulate) ||
                 (cur_pos == pos_target - 1 && !accumulate) ||
                 cur_pos == pos_target) {
+                printf("[call create_and_load_bgr 1] %d\n", cur_pos);
                 create_and_load_bgr(
-                    pFrame, pFrameBGR, buffer, bgr_arr, cur_pos, pos_target);
+                    pFrame, pFrameBGR, buffer, bgr_arr, cur_pos, pos_target, True);
             }
         }  
     }  
