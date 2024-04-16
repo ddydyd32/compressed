@@ -1,6 +1,7 @@
 from dataset import MPEG4, clip_and_scale
 from pathlib import Path
 from torch.utils.data import DataLoader
+import torch
 import numpy as np
 from PIL import Image
 from coviar import load as load_mpeg4
@@ -14,28 +15,35 @@ filenames = list(sorted(map(str, filenames)))[:1]
 dataset = MPEG4(filenames, accumulate=True, GOP_SIZE=12)
 loader = DataLoader(dataset, shuffle=False)
 
-for i, d in enumerate(iter(dataset)):
-    if i > 1:
+it = iter(dataset)
+i = -1
+while 1:
+    if i >= 11:
         break
-    print(f"\n[frame {i} / {d['num_frames']}]")
+    i += 1
+    print(f"\n[DATA {i}]")
+    d = next(it)
+    print(f"[dataset.py] [idx {i}] [img]")
+    # d['img'] = {
+    #     'tensor': torch.tensor(load_mpeg4(d['filename'], d['gop_index'], d['gop_pos'], 0, True)),
+    #     'gop_index': d['gop_index'],
+    #     'gop_pos': d['gop_pos'],
+    # }
     for k, v in d.items():
         if type(v) in [str, int]:
             continue
         v2 = v
         v = v['tensor'].cpu().numpy()
-        print(f"{k}[{v2['gop_index']}, {v2['gop_pos']}]:", 'min:', v.min(), 'max:', v.max(), 'mean:', v.mean(), 'shape:', v.shape, v.dtype)
+        print(f"  {k} [{v2['gop_index']}, {v2['gop_pos']}]:", 'min:', v.min(), 'max:', v.max(), 'mean:', v.mean(), 'shape:', v.shape, v.dtype)
         d[k] = v
-    d['img'] = load_mpeg4(d['filename'], d['gop_index'], d['gop_pos'], 0, True)
-    img = d['img'][..., ::-1]
     iframe = d['iframe'][..., ::-1]
-    mv = d['mv']
     res = d['res'][..., ::-1]
+    img = d['img'][..., ::-1]
+    mv = d['mv']
     height, width, _ = img.shape
-    print('iframe+res:', iframe.mean() + res.mean())
-    print('img:', img.mean())
 
     yv, xv = np.meshgrid(range(width), range(height))
-    dx, dy = mv[:, :, 0], mv[:, :, 1]
+    dx, dy = mv[:, :, 1], mv[:, :, 0]
     if i % 12 == 0:
         assert np.abs(iframe[xv, yv] - img).sum() < 1e-5
         assert np.abs(res).sum() < 1e-5
@@ -44,9 +52,25 @@ for i, d in enumerate(iter(dataset)):
     src_x = np.clip(src_x, 0, height-1)
     src_y = np.clip(src_y, 0, width-1)
     move = iframe[src_x, src_y].astype(np.float32)
-    print('move:', 'min:', move.min(), 'max:', move.max(), 'mean:', move.mean(), move.dtype, move.shape)
+    print('    move:', 'min:', move.min(), 'max:', move.max(), 'mean:', move.mean(), move.dtype, move.shape)
     recons = move + res.astype(np.float32)
-    print('recons:', 'min:', recons.min(), 'max:', recons.max(), 'mean:', recons.mean(), recons.dtype, recons.shape)
+    print('    recons:', 'min:', recons.min(), 'max:', recons.max(), 'mean:', recons.mean(), recons.dtype, recons.shape)
+    print('    img:', img.mean())
+    diff = recons - img
+    f = np.where(diff != 0)
+    if len(f[0]) > 0:
+        fx, fy, _ = f
+        print('diff:', fx.shape, fx.max(), fy.shape, fy.max(), fx[:15:3], fy[:15:3])
+        print(np.vstack([fx, fy])[:, :15:3], np.vstack([fx, fy])[:, -15::3])
+        print('res [0, 112]', res[0, 112], '[0, 113]', res[0, 113])
+        print('img [0, 112]', img[0, 112], '[0, 113]', img[0, 113])
+        print('mv [0, 112]', mv[0, 112], '[0, 113]', mv[0, 113])
+        print('src_x [0, 112]', src_x[0, 112], '[0, 113]', src_x[0, 113])
+        print('src_y [0, 112]', src_y[0, 112], '[0, 113]', src_y[0, 113])
+        print('move [0, 112]', move[0, 112], '[0, 113]', move[0, 113])
+        print('recons [0, 112]', recons[0, 112], '[0, 113]', recons[0, 113])
+        recons[0, :100, 0] += 255
+        print('diff [0, 112]', diff[0, 112], '[0, 113]', diff[0, 113])
     move = np.clip(move, 0, 255).astype(np.uint8)
     recons = np.clip(recons, 0, 255).astype(np.uint8)
     Image.fromarray(move).save(f"t/idx_{i}_move_{os.path.basename(d['filename'])[:-4]}.png")

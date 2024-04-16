@@ -8,7 +8,7 @@ if [[ ! -d "${DATA_DIR}" ]]; then
 fi
 
 cd ${DATA_DIR}
-wget http://serre-lab.clps.brown.edu/wp-content/uploads/2013/10/hmdb51_org.rar
+# wget http://serre-lab.clps.brown.edu/wp-content/uploads/2013/10/hmdb51_org.rar
 
 mkdir rars && mkdir videos
 unrar x hmdb51_org.rar rars/

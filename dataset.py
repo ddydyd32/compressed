@@ -1,4 +1,5 @@
 import torch
+import os
 from torch.utils.data import Dataset
 import numpy as np
 from coviar import load as load_mpeg4
@@ -29,7 +30,7 @@ class MPEG4(Dataset):
         self.GOP_SIZE = GOP_SIZE
         self.frames = []
         self.types = {
-            # 'img': 0,
+            'img': 0,
             'iframe': 0,
             'mv': 1,
             'res': 2
@@ -62,9 +63,10 @@ class MPEG4(Dataset):
         }
         for t, i in self.types.items():
             if t in {'mv', 'res'} and video['frame_idx'] % self.GOP_SIZE == 0:
+                # print(f'[dataset.py] [idx {idx}] [{t}] creating zeros')
                 x[t] = np.zeros(x['iframe']['tensor'].shape, dtype=np.int32)[:, :, :2 if t == 'mv' else 3]
             else:
-                # print(f'\n[{t}] load args:', video[t]['gop_index'], video[t]['gop_pos'], i, self.accumulate, video['filename'])
+                # print(f'[dataset.py] [idx {idx}] [{t}] load args:', video[t]['gop_index'], video[t]['gop_pos'], i, self.accumulate, os.path.basename(video['filename']))
                 x[t] = load_mpeg4(video['filename'], video[t]['gop_index'], video[t]['gop_pos'], i, self.accumulate)
             x[t] = {
                 'tensor': torch.tensor(x[t]),
