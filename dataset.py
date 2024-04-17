@@ -1,5 +1,6 @@
 import torch
 import os
+import cv2
 from torch.utils.data import Dataset
 import numpy as np
 from coviar import load as load_mpeg4
@@ -77,3 +78,17 @@ class MPEG4(Dataset):
 
     def __len__(self):
         return len(self.frames)
+
+
+def mv_to_hsv(mv):
+    # mv: [x, y, [dy, dx]]
+    magnitude, angle = cv2.cartToPolar(mv[:, :, 1], mv[:, :, 0])
+    hsv = np.zeros([mv.shape[0], mv.shape[1], 3], dtype=mv.dtype)
+    hsv[:, :, 0] = angle
+    hsv[:, :, 1] = 1
+    hsv[:, :, 2] = magnitude / np.linalg.norm(magnitude)
+    return hsv
+
+
+if __name__ == '__main__':
+    pass

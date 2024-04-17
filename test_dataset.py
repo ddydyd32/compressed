@@ -1,4 +1,4 @@
-from dataset import MPEG4, clip_and_scale
+from dataset import MPEG4, clip_and_scale, mv_to_hsv
 from pathlib import Path
 from torch.utils.data import DataLoader
 import torch
@@ -40,6 +40,7 @@ while 1:
     res = d['res'][..., ::-1]
     img = d['img'][..., ::-1]
     mv = d['mv']
+    hsv = mv_to_hsv(mv)
     height, width, _ = img.shape
 
     yv, xv = np.meshgrid(range(width), range(height))
