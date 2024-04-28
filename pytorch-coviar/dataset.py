@@ -152,7 +152,7 @@ class CoviarDataSet(data.Dataset):
                     img = (np.minimum(np.maximum(img, 0), 255)).astype(np.uint8)
 
             if self._representation == 'iframe':
-                # img = color_aug(img)
+                img = color_aug(img)
 
                 # BGR to RGB. (PyTorch uses RGB according to doc.)
                 img = img[..., ::-1]
@@ -164,15 +164,15 @@ class CoviarDataSet(data.Dataset):
 
         frames = np.array(frames)
         input = frames
-        # frames = np.transpose(frames, (0, 3, 1, 2))
-        # input = torch.from_numpy(frames).float() / 255.0
+        frames = np.transpose(frames, (0, 3, 1, 2))
+        input = torch.from_numpy(frames).float() / 255.0
 
-        # if self._representation == 'iframe':
-        #     input = (input - self._input_mean) / self._input_std
-        # elif self._representation == 'residual':
-        #     input = (input - 0.5) / self._input_std
-        # elif self._representation == 'mv':
-        #     input = (input - 0.5)
+        if self._representation == 'iframe':
+            input = (input - self._input_mean) / self._input_std
+        elif self._representation == 'residual':
+            input = (input - 0.5) / self._input_std
+        elif self._representation == 'mv':
+            input = (input - 0.5)
 
         return input, label
 
