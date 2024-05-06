@@ -274,7 +274,7 @@ class STLLMModel(Blip2Base):
                 num_query_token, self.visual_encoder.num_features
             )
             from ._hgf import apply_patch
-            apply_patch(self.Qformer.bert, r=8)
+            apply_patch(self.Qformer.bert, r=6)
             print('self.query_tokens:', self.query_tokens.shape, 'num_query_token:', num_query_token, 'self.visual_encoder.num_features:', self.visual_encoder.num_features)
             
             if not qformer_text_input:
@@ -332,7 +332,7 @@ class STLLMModel(Blip2Base):
                 image = einops.rearrange(image,'B T C H W -> (B T) C H W')
 
             image_embeds = self.visual_encoder(image)
-            print('image_embeds:', image_embeds.shape)
+            # print('image_embeds:', image_embeds.shape)
             image_embeds = self.ln_vision(image_embeds)
             if self.has_qformer:
                 image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(device)
@@ -370,6 +370,8 @@ class STLLMModel(Blip2Base):
                         encoder_attention_mask=image_atts,
                         return_dict=True,
                     )
+                if self.k:
+                    print('query_output:', query_output.last_hidden_state.shape, 'query_tokens:', query_tokens.shape, 'image_embeds:', image_embeds.shape)
                 inputs_llama = self.llama_proj(query_output.last_hidden_state[:,:query_tokens.size(1),:])
             else:
                 image_embeds = image_embeds[:, 1:, :]
@@ -379,17 +381,15 @@ class STLLMModel(Blip2Base):
             if not infer:
                 inputs_llama = einops.rearrange(inputs_llama,'(B T) L D -> B T L D',T=T)
             # original, random drop 40%, ToMe drop
-            #[:50], mvbench: 56.3, 53.7
+            #[:50], mvbench: 56.3, 53.7, 45.5
             #[:50], test_general correct: 3.36, 3.27
             # tt = int(0.6 * inputs_llama.shape[1])
             # tt = np.arange(1, tt)
             # np.random.shuffle(tt)
-            # if self.k:
-            #     print('inputs_llama:', inputs_llama.shape)
-            # inputs_llama = torch.concat([inputs_llama[:, :1], inputs_llama[:, tt]], dim=1)#
             if self.k:
                 print('inputs_llama:', inputs_llama.shape)
                 self.k = 0
+            # inputs_llama = torch.concat([inputs_llama[:, :1], inputs_llama[:, tt]], dim=1)#
 
             atts_llama = torch.ones(inputs_llama.size()[:-1], dtype=torch.long).to(image.device)
             # print('atts_llama:', atts_llama.shape)

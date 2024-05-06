@@ -9,16 +9,113 @@
 # --------------------------------------------------------
 
 
-from typing import Tuple
-
 import math
 import torch
-from .Qformer import BertSelfAttention, BertAttention, BertLayer, BertModel, apply_chunking_to_forward
+from .Qformer import BertSelfAttention, BertAttention, BertLayer, BertModel, BertEncoder, apply_chunking_to_forward, BaseModelOutputWithPastAndCrossAttentions, logger
 
 from ._merge import bipartite_soft_matching, merge_source, merge_wavg
 from ._utils import parse_r
-from typing import Any, Optional, Tuple, Union
 from torch import nn
+
+
+class ToMeBertEncoder(BertEncoder):
+
+    def forward(
+        self,
+        hidden_states,
+        attention_mask=None,
+        head_mask=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
+        past_key_values=None,
+        use_cache=None,
+        output_attentions=False,
+        output_hidden_states=False,
+        return_dict=True,
+        query_length=0,
+    ):
+        all_hidden_states = () if output_hidden_states else None
+        all_self_attentions = () if output_attentions else None
+        all_cross_attentions = (
+            () if output_attentions and self.config.add_cross_attention else None
+        )
+
+        next_decoder_cache = () if use_cache else None
+
+        for i in range(self.config.num_hidden_layers):
+            layer_module = self.layer[i]
+            if output_hidden_states:
+                all_hidden_states = all_hidden_states + (hidden_states,)
+
+            layer_head_mask = head_mask[i] if head_mask is not None else None
+            past_key_value = past_key_values[i] if past_key_values is not None else None
+
+            if getattr(self.config, "gradient_checkpointing", False) and self.training:
+
+                if use_cache:
+                    logger.warn(
+                        "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
+                    )
+                    use_cache = False
+
+                def create_custom_forward(module):
+                    def custom_forward(*inputs):
+                        return module(
+                            *inputs, past_key_value, output_attentions, query_length
+                        )
+
+                    return custom_forward
+
+                layer_outputs = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(layer_module),
+                    hidden_states,
+                    attention_mask,
+                    layer_head_mask,
+                    encoder_hidden_states,
+                    encoder_attention_mask,
+                )
+            else:
+                # added: change mask too
+                layer_outputs, attention_mask = layer_module(
+                    hidden_states,
+                    attention_mask,
+                    layer_head_mask,
+                    encoder_hidden_states,
+                    encoder_attention_mask,
+                    past_key_value,
+                    output_attentions,
+                    query_length,
+                )
+
+            hidden_states = layer_outputs[0]
+            if use_cache:
+                next_decoder_cache += (layer_outputs[-1],)
+            if output_attentions:
+                all_self_attentions = all_self_attentions + (layer_outputs[1],)
+                all_cross_attentions = all_cross_attentions + (layer_outputs[2],)
+
+        if output_hidden_states:
+            all_hidden_states = all_hidden_states + (hidden_states,)
+
+        if not return_dict:
+            return tuple(
+                v
+                for v in [
+                    hidden_states,
+                    next_decoder_cache,
+                    all_hidden_states,
+                    all_self_attentions,
+                    all_cross_attentions,
+                ]
+                if v is not None
+            )
+        return BaseModelOutputWithPastAndCrossAttentions(
+            last_hidden_state=hidden_states,
+            past_key_values=next_decoder_cache,
+            hidden_states=all_hidden_states,
+            attentions=all_self_attentions,
+            cross_attentions=all_cross_attentions,
+        )
 
 
 class ToMeBertLayer(BertLayer):
@@ -60,7 +157,7 @@ class ToMeBertLayer(BertLayer):
         r = self._tome_info["r"].pop(0)
         if r > 0:
             # Apply ToMe here
-            # print('r:', r, 'before:', attention_output.shape)
+            # print('before r:', r, attention_output.shape, attention_mask.shape)
             merge, _ = bipartite_soft_matching(
                 metric,
                 r,
@@ -71,8 +168,9 @@ class ToMeBertLayer(BertLayer):
                 self._tome_info["source"] = merge_source(
                     merge, attention_output, self._tome_info["source"]
                 )
+            attention_mask = merge_wavg(merge, attention_mask.squeeze()[..., None], self._tome_info["size"])[0].squeeze()[:, None, None, :]
             attention_output, self._tome_info["size"] = merge_wavg(merge, attention_output, self._tome_info["size"])
-            # print('r:', r, 'after:', attention_output.shape)
+            # print('after:', attention_output.shape, attention_mask.shape)
 
 
         if query_length > 0:
@@ -120,7 +218,8 @@ class ToMeBertLayer(BertLayer):
 
         outputs = outputs + (present_key_value,)
 
-        return outputs
+        return outputs, attention_mask
+
 
 class ToMeBertSelfAttention(BertSelfAttention):
 
@@ -298,6 +397,7 @@ def apply_patch(
     the shelf. For trianing and for evaluating MAE models off the self set this to be False.
     """
     ToMeBertModel = make_tome_class(model.__class__)
+    print('reduce:', sum(parse_r(len(model.encoder.layer), r)))
 
     model.__class__ = ToMeBertModel
     model.r = r
@@ -322,3 +422,5 @@ def apply_patch(
             module.__class__ = ToMeBertAttention
         elif isinstance(module, BertSelfAttention):
             module.__class__ = ToMeBertSelfAttention
+        elif isinstance(module, BertEncoder):
+            module.__class__ = ToMeBertEncoder
