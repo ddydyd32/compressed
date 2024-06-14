@@ -1,6 +1,6 @@
 dataset:
     name: 'cifar10'
-    map_funcs: 'yuv_ldpc'
+    map_funcs: 'yuv_y'
     num_bitplanes: 8
     d_v: 4
     d_c: 8
@@ -10,7 +10,7 @@ dataset:
     patch_h: 32
 
 model:
-    name: 'resnet'
+    name: 'gru'
     gru_units: 32
 
 num_runs: 5

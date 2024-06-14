@@ -1,6 +1,6 @@
 dataset:
-    name: 'cifar10'
-    map_funcs: 'yuv_ldpc'
+    name: 'cifar100'
+    map_funcs: 'rgb'
     num_bitplanes: 8
     d_v: 4
     d_c: 8

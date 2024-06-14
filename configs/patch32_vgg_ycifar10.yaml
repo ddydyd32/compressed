@@ -10,7 +10,7 @@ dataset:
     patch_h: 32
 
 model:
-    name: 'resnet'
+    name: 'vgg'
     gru_units: 32
 
 num_runs: 5

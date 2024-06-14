@@ -36,6 +36,6 @@ training:
     eval_steps: 10
     logging_strategy: "epoch"
     logging_steps: 10
-    save_strategy: "epoch"
+    save_strategy: "no"
     save_total_limit: 1
     report_to: 'tensorboard'
