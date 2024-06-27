@@ -23,7 +23,7 @@ def huffman_encode(arr, prefix, save_dir='./'):
 
     # Calculate frequency in arr
     freq_map = defaultdict(int)
-    convert_map = {'float32':float, 'int32':int}
+    convert_map = {'float32':float, 'int32':int, 'uint8': int}
     for value in np.nditer(arr):
         value = convert_map[dtype](value)
         freq_map[value] += 1
@@ -54,26 +54,14 @@ def huffman_encode(arr, prefix, save_dir='./'):
     root = heappop(heap)
     generate_code(root, '')
 
+    data_encoding_map = [value2code[convert_map[dtype](value)] for value in np.nditer(arr)]
+    return data_encoding_map
     # Path to save location
     directory = Path(save_dir)
 
     # Dump data
     ls = [len(value2code[convert_map[dtype](value)]) for value in np.nditer(arr)]
     data_encoding = ''.join(value2code[convert_map[dtype](value)] for value in np.nditer(arr))
-    print('arr:', arr.shape, 'code min max:', min(ls), max(ls))
-    print('data_encoding:', len(data_encoding))
-    def code2np(codes):
-        x = np.zeros([len(codes), max(len(a) for a in codes)]).astype(np.float32)
-        for i, code in enumerate(codes):
-            for j, c in enumerate(code):
-                x[i, j] = int(c)
-        return x
-    data_encoding_map = [value2code[convert_map[dtype](value)] for value in np.nditer(arr)]
-    print('data_encoding_map:', len(data_encoding_map), max(len(x) for x in data_encoding_map), data_encoding_map[:2])
-    data_encoding_map = code2np(data_encoding_map)
-    print('padded:', data_encoding_map.shape)
-    datasize = 0
-    print()
 
     # Dump codebook (huffman tree)
     codebook_encoding = encode_huffman_tree(root, dtype)
@@ -212,17 +200,6 @@ def calc_index_diff(indptr):
 
 def reconstruct_indptr(diff):
     return np.concatenate([[0], np.cumsum(diff)])
-
-
-x = np.random.random([8, 512]).astype(np.float32)
-huffman_encode(x, 'prefix', save_dir='./')
-x = np.random.random([512]).astype(np.float32)
-huffman_encode(x, 'prefix', save_dir='./')
-x = np.zeros([512]).astype(np.float32)
-x[: 300] = 1
-x[: 250] = 2
-x[: 100] = 3
-huffman_encode(x, 'prefix', save_dir='./')
 
 
 # Encode / Decode models

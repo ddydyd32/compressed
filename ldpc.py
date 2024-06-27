@@ -14,6 +14,7 @@ import evaluate
 
 from transformers import (
     DefaultDataCollator,
+    DataCollatorWithPadding,
     Trainer,
     TrainingArguments,
     ViTConfig,
@@ -26,6 +27,7 @@ from model import (
     VGG,
     ViT
 )
+from entropy import huffman_encode
 
 
 def compute_metrics(eval_pred):
@@ -130,17 +132,57 @@ def ldpc(x: np.ndarray, pw, ph):
     return xs
 
 
-def yuv_y_patch(eg):
-    x = eg['img'].convert('YCbCr')
-    x = np.asarray(x)[:, :, 0]
-    x = gray2bin(x).astype(np.float32)
-    x = x.transpose([2, 0, 1])[: config.dataset.num_bitplanes]
-    patches = get_patches(x, pw=config.dataset.patch_w, ph=config.dataset.patch_h)
+def code2np(code, max_len=None):
+    if max_len is None:
+        max_len = len(code)
+    x = np.zeros(max_len).astype(np.float32)
+    for j, c in enumerate(code):
+        x[-len(code)+j] = int(c)
+    return x
+
+
+def code2fp32(code):
+    x = 0
+    for j, c in enumerate(code.reshape(-1)):
+        x = (x << 1) | int(c)
+    x = np.array([x]).astype(np.float32)# / (2 ** 16)
+    return x
+
+
+def huffman(x: np.ndarray, pw, ph):
+    bitplanes = []
+    patches = get_patches(x, pw=pw, ph=ph)
     num_patches, c, _, _ = patches.shape
-    x = patches.transpose([1, 0, 2, 3]).reshape([c, -1])
-    x = torch.tensor(x)
-    eg['x'] = x
-    return eg
+    _xs = []
+    for i in range(config.dataset.num_bitplanes):
+        # i = 8 - 1 - i
+        mask = 1 << i
+        for j, x in enumerate(patches): # todo c first or patch first?
+            bitplane = (x & mask) >> i
+            for k in range(c): # TODO squeeze bits into fp32
+                info = bitplane[k]
+                info = code2fp32(info)
+                _xs.append(info)
+    _xs = np.concatenate(_xs)
+    y = huffman_encode(_xs, 'prefix', save_dir='./')
+    ml = max(len(x) for x in y)
+    _xs = [code2np(x, max_len=ml) for x in y]
+    xs = np.concatenate(_xs)
+    return xs.reshape(config.dataset.num_bitplanes * c, num_patches * ml)
+
+
+# patch on no coding
+# def yuv_y_patch(eg):
+#     x = eg['img'].convert('YCbCr')
+#     x = np.asarray(x)[:, :, 0]
+#     x = gray2bin(x).astype(np.float32)
+#     x = x.transpose([2, 0, 1])[: config.dataset.num_bitplanes]
+#     patches = get_patches(x, pw=config.dataset.patch_w, ph=config.dataset.patch_h)
+#     num_patches, c, _, _ = patches.shape
+#     x = patches.transpose([1, 0, 2, 3]).reshape([c, -1])
+#     x = torch.tensor(x)
+#     eg['x'] = x
+#     return eg
 
 
 def yuv_y(eg):
@@ -165,7 +207,7 @@ def yuv_ldpc(eg):
 def yuv_huffman(eg):
     x = eg['img'].convert('YCbCr')
     x = np.asarray(x)[:, :, 0]
-    x = ldpc(x, pw=config.dataset.patch_w, ph=config.dataset.patch_h).astype(np.float32)
+    x = huffman(x, pw=config.dataset.patch_w, ph=config.dataset.patch_h).astype(np.float32)
     x = torch.tensor(x) # b, config.dataset.num_bitplanes, n, t
     eg['x'] = x
     return eg
@@ -194,15 +236,17 @@ def rgb_ldpc(eg):
 
 def cifar100(eg):
     eg['label'] = eg['coarse_label']
+    eg['label'] = eg['fine_label']
     return eg
 
 
 map_funcs = {
-    'yuv_y_patch': yuv_y_patch,
+    # 'yuv_y_patch': yuv_y_patch,
     'yuv_y': yuv_y,
     'rgb': rgb,
     'yuv_ldpc': yuv_ldpc,
     'rgb_ldpc': rgb_ldpc,
+    'yuv_huffman': yuv_huffman,
 }
 
 
@@ -216,8 +260,9 @@ def main():
 
     dataset_name = config.dataset.name
     for key in list(data.keys()):
-        cached = f'data/{dataset_name}_{config.dataset.map_funcs}_pw{config.dataset.patch_w}_ph{config.dataset.patch_h}_{key}'
+        cached = f'data/{dataset_name}_{config.dataset.map_funcs}_pw{config.dataset.patch_w}_ph{config.dataset.patch_h}_{key}_100'
         try:
+            raise NotImplementedError
             data[key] = load_from_disk(cached)
             print(f'loaded {key} from {cached}')
         except:
@@ -306,6 +351,20 @@ def main():
         print(f'Accuracy: {100 * correct / total} %')
         # '''
         data_collator = DefaultDataCollator()
+        if 'huffman' in config.dataset.map_funcs:
+            class Collator(DefaultDataCollator):
+                def __call__(self, features):
+                    fs = []
+                    xs = np.zeros([len(features), features[0]['x'].shape[0], max(z['x'].shape[1] for z in features)]).astype(np.float32)
+                    for i, b in enumerate(features):
+                        xs[i, :, : b['x'].shape[1]] = b['x']
+                        b.pop('x')
+                        fs.append(b)
+                    output = super().__call__(fs)
+                    output['x'] = torch.tensor(xs, device=output['labels'].device)
+                    return output
+
+            data_collator = Collator()
         training_args = TrainingArguments(seed=config.dataset.seed+run, data_seed=config.dataset.seed+run, **config.training)
 
         trainer = Trainer(
