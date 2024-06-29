@@ -1,6 +1,6 @@
 dataset:
     name: 'cifar10'
-    map_funcs: 'yuv_huffman'
+    map_funcs: 'rgb_huffman'
     num_bitplanes: 8
     d_v: 4
     d_c: 8
@@ -10,7 +10,7 @@ dataset:
     patch_h: 8
 
 model:
-    name: 'vgg'
+    name: 'gru'
     gru_units: 32
 
 num_runs: 5
@@ -36,6 +36,6 @@ training:
     eval_steps: 10
     logging_strategy: "epoch"
     logging_steps: 10
-    save_strategy: "epoch"
+    save_strategy: "no"
     save_total_limit: 1
     report_to: 'tensorboard'

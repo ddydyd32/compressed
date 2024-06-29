@@ -141,48 +141,66 @@ def code2np(code, max_len=None):
     return x
 
 
-def code2fp32(code):
+def code2fp32(code, scale=False):
+    if type(code) is str:
+        it = code
+    else:
+        it = code.reshape(-1)
     x = 0
-    for j, c in enumerate(code.reshape(-1)):
+    for j, c in enumerate(it):
         x = (x << 1) | int(c)
-    x = np.array([x]).astype(np.float32)# / (2 ** 16)
+    if scale:
+        x = np.array([x - 2 ** 5]).astype(np.float32) / (2 ** 5)
+    else:
+        x = np.array([x]).astype(np.float32)
     return x
 
 
-def huffman(x: np.ndarray, pw, ph):
+def huffman(x: np.ndarray, pw, ph, fullbit=True):
     bitplanes = []
-    patches = get_patches(x, pw=pw, ph=ph)
+    patches = get_patches(x, pw=pw, ph=ph) # x: 1 x 32 x 32, pw: 1, ph: 8, 
     num_patches, c, _, _ = patches.shape
     _xs = []
     for i in range(config.dataset.num_bitplanes):
         # i = 8 - 1 - i
         mask = 1 << i
-        for j, x in enumerate(patches): # todo c first or patch first?
+        for j, x in enumerate(patches):
             bitplane = (x & mask) >> i
-            for k in range(c): # TODO squeeze bits into fp32
+            for k in range(c):
                 info = bitplane[k]
-                info = code2fp32(info)
+                info = code2fp32(info, scale=False) # 0 0 0 0 0 0 1 1 -> 3 for each patch
                 _xs.append(info)
-    _xs = np.concatenate(_xs)
-    y = huffman_encode(_xs, 'prefix', save_dir='./')
+    _xs = np.concatenate(_xs).astype(np.int32)
+    y = huffman_encode(_xs.reshape(-1), 'prefix', save_dir='./')
     ml = max(len(x) for x in y)
-    _xs = [code2np(x, max_len=ml) for x in y]
+    if fullbit:
+        _xs = [code2np(x, max_len=ml) for x in y]
+    else:
+        _xs = [code2fp32(x, scale=False) for x in y]
     xs = np.concatenate(_xs)
-    return xs.reshape(config.dataset.num_bitplanes * c, num_patches * ml)
+    return xs.reshape(config.dataset.num_bitplanes * c, -1)
+    # return xs.reshape(config.dataset.num_bitplanes * c * num_patches, ml)
 
 
-# patch on no coding
-# def yuv_y_patch(eg):
-#     x = eg['img'].convert('YCbCr')
-#     x = np.asarray(x)[:, :, 0]
-#     x = gray2bin(x).astype(np.float32)
-#     x = x.transpose([2, 0, 1])[: config.dataset.num_bitplanes]
-#     patches = get_patches(x, pw=config.dataset.patch_w, ph=config.dataset.patch_h)
-#     num_patches, c, _, _ = patches.shape
-#     x = patches.transpose([1, 0, 2, 3]).reshape([c, -1])
-#     x = torch.tensor(x)
-#     eg['x'] = x
-#     return eg
+def huffman_pix(x: np.ndarray, pw, ph, fullbit=True):
+    bitplanes = []
+    patches = get_patches(x, pw=pw, ph=ph)
+    num_patches, c, _, _ = patches.shape
+    _xs = []
+    for j, x in enumerate(patches): # todo c first or patch first?
+        for k in range(c):
+            info = x[k]
+            _xs += info.reshape(-1).tolist()
+    _xs = np.asarray(_xs).astype(np.int32)
+    y = huffman_encode(_xs.reshape(-1), 'prefix', save_dir='./')
+    ml = max(len(x) for x in y)
+    if fullbit:
+        _xs = [code2np(x, max_len=ml) for x in y]
+    else:
+        _xs = [code2fp32(x, scale=False) for x in y]
+    xs = np.concatenate(_xs)
+    return xs.reshape(config.dataset.num_bitplanes * c, -1)
+    # return xs.reshape(config.dataset.num_bitplanes * c * num_patches, ml)
 
 
 def yuv_y(eg):
@@ -234,6 +252,15 @@ def rgb_ldpc(eg):
     return eg
 
 
+def rgb_huffman(eg):
+    x = eg['img'].convert('RGB')
+    x = np.asarray(x).transpose([2, 0, 1])
+    x = huffman_pix(x, pw=config.dataset.patch_w, ph=config.dataset.patch_h).astype(np.float32)
+    x = torch.tensor(x) # b, config.dataset.num_bitplanes, n, t
+    eg['x'] = x
+    return eg
+
+
 def cifar100(eg):
     eg['label'] = eg['coarse_label']
     eg['label'] = eg['fine_label']
@@ -241,12 +268,12 @@ def cifar100(eg):
 
 
 map_funcs = {
-    # 'yuv_y_patch': yuv_y_patch,
     'yuv_y': yuv_y,
     'rgb': rgb,
     'yuv_ldpc': yuv_ldpc,
     'rgb_ldpc': rgb_ldpc,
     'yuv_huffman': yuv_huffman,
+    'rgb_huffman': rgb_huffman,
 }
 
 
@@ -279,6 +306,7 @@ def main():
         data[key + '_loader'] = torch.utils.data.DataLoader(data[key], batch_size=config.training.per_device_train_batch_size, shuffle=key=='train')
 
     num_classes = 100 if '100' in dataset_name else 10
+    num_classes = 10
 
     # get some random training images
     for batch in data['train']:
@@ -287,6 +315,7 @@ def main():
         print('labels:', labels.shape)
         c_in = images.shape[-2]
         break
+    # exit()
 
     stats = {}
     for run in range(config.num_runs):
