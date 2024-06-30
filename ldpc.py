@@ -1,7 +1,7 @@
 import torch
 import os
 
-import torchvision
+import yaml
 from torchvision.transforms import Normalize
 import numpy as np
 import torch.optim as optim
@@ -278,6 +278,9 @@ map_funcs = {
 
 
 def main():
+    os.makedirs(config.training.output_dir)
+    with open(os.path.join(config.training.output_dir, '_config.yaml'), 'w') as file:
+        yaml.dump(config, file, indent=4)
     data = {
         'test': None,
         'train': None,
