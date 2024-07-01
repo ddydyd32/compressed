@@ -262,6 +262,7 @@ class URESNET18(nn.Module):
         }
 
     def forward(self, x: Tensor, labels=None) -> Tensor:
+        # need x: b c t
         return self._forward_impl(x, labels=labels)
 
 
@@ -321,6 +322,7 @@ class VGG(nn.Module):
 
     def forward(self, x: torch.Tensor, labels=None) -> torch.Tensor:
         # x in: b, c, t
+        # x = x.transpose(1, 2) # b t c -> b c t
         x = self.features(x)
         x = self.avgpool(x)
         x = torch.flatten(x, 1)

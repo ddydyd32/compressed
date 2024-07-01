@@ -178,8 +178,11 @@ def get_huffman(x: np.ndarray):
     return y
 
 
+ML = -1
 def get_fullbit(y):
     ml = max(len(x) for x in y)
+    global ML
+    ML = max(ML, ml)
     _xs = [code2np(x, max_len=ml) for x in y]
     xs = np.concatenate(_xs)
     return xs.reshape(-1, ml) # config.data.num_bitplanes * c
@@ -259,7 +262,7 @@ def main():
                     x = eg['img']
                     for f in config.data.map_funcs.split('_'):
                         x = map_funcs[f](x)
-                    eg['x'] = x
+                    eg['x'] = x.transpose(1, 0)
                     return eg
                 data[key] = data[key].map(f, remove_columns=['img'])
             if '100' in dataset_name:
@@ -278,7 +281,10 @@ def main():
         images, labels = batch['x'], batch['label']
         print('image:', images.mean(), images.min(), images.max(), images.dtype, images.shape)
         print('labels:', labels.shape)
-        c_in = images.shape[-2]
+        c_in, t = images.shape
+        if ML > -1:
+            c_in = ML
+        print('c_in:', c_in)
         break
     # exit()
 
@@ -343,15 +349,15 @@ def main():
                 _, predictions = torch.max(outputs['logits'], 1)
 
         print(f'Accuracy: {100 * correct / total} %')
-        # '''
+        '''
         data_collator = DefaultDataCollator()
         if 'huffman' in config.data.map_funcs:
             class Collator(DefaultDataCollator):
                 def __call__(self, features):
                     fs = []
-                    xs = np.zeros([len(features), features[0]['x'].shape[0], max(z['x'].shape[1] for z in features)]).astype(np.float32)
+                    xs = np.zeros([len(features), max(z['x'].shape[0] for z in features), features[0]['x'].shape[1]]).astype(np.float32)
                     for i, b in enumerate(features):
-                        xs[i, :, : b['x'].shape[1]] = b['x']
+                        xs[i, : b['x'].shape[0], :] = b['x']
                         b.pop('x')
                         fs.append(b)
                     output = super().__call__(fs)
@@ -380,7 +386,7 @@ def main():
     print('******** mean ********')
     for k in stats:
         stats[k] = np.array(stats[k]) * 100
-        print(f'{k}:', f'{np.mean(stats[k]):.1f} +- {np.std(stats[k]):.1f}')
+        print(f'{k}:', f'{np.mean(stats[k]):.1f}+-{np.std(stats[k]):.1f}')
 
 
 if __name__ == '__main__':
