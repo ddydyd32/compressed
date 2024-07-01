@@ -1,15 +1,25 @@
 #!/bin/bash
 
-# nohup python ldpc.py --config_path configs/patch32_uresnet18_ycifar10_huffman.yaml > logs/patch32_uresnet18_ycifar10_huffman.log &
-nohup python ldpc.py --config_path configs/patch1x8_uresnet18_ycifar10_huffman.yaml > logs/pix_fullbit_patch1x8_uresnet18_cifar10rgb_huffman.log &
-# nohup python ldpc.py --config_path configs/patch32_gru32_ycifar10_huffman.yaml > logs/patch32_gru32_ycifar10_huffman.log &
-nohup python ldpc.py --config_path configs/patch1x8_gru32_ycifar10_huffman.yaml > logs/pix_fullbit_patch1x8_gru32_cifar10rgb_huffman.log &
-# nohup python ldpc.py --config_path configs/patch32_vgg_ycifar10_huffman.yaml > logs/patch32_vgg_ycifar10_huffman.log &
-nohup python ldpc.py --config_path configs/patch1x8_vgg_ycifar10_huffman.yaml > logs/pix_fullbit_patch1x8_vgg_cifar10rgb_huffman.log &
+ARCHS=(
+    'gru'
+    'resnet'
+    'vgg'
+)
 
-# cp configs/patch32_uresnet18_ycifar10.yaml configs/patch32_uresnet18_ycifar10_huffman.yaml
-# cp configs/patch4_uresnet18_ycifar10.yaml configs/patch4_uresnet18_ycifar10_huffman.yaml
-# cp configs/patch32_gru32_ycifar10.yaml configs/patch32_gru32_ycifar10_huffman.yaml
-# cp configs/patch4_gru32_ycifar10.yaml configs/patch4_gru32_ycifar10_huffman.yaml
-# cp configs/patch32_vgg_ycifar10.yaml configs/patch32_vgg_ycifar10_huffman.yaml
-# cp configs/patch4_vgg_ycifar10.yaml configs/patch4_vgg_ycifar10_huffman.yaml
+MAP="yuv_bitplanes_patches_huffman_fullbit"
+W=1
+H=2
+length=${#ARCHS[@]}
+for ((i=0; i<${length}; i++)); do
+    EXP="${MAP}_${W}x${H}_${ARCHS[i]}"
+    mkdir -p "${EXP}"
+    nohup python ldpc.py \
+    --dataset cifar10 \
+    --map_funcs "${MAP}" \
+    --patch_w $W \
+    --patch_h $H \
+    --arch "${ARCHS[i]}" \
+    --fullbit True \
+    --output_dir "${EXP}" \
+    > "${EXP}/training.log" &
+done
