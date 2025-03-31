@@ -8,6 +8,7 @@ dataset:
     seed: 42
     patch_w: 1
     patch_h: 8
+    fullbit: true
 
 model:
     name: 'resnet'
