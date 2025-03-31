@@ -107,9 +107,9 @@ def ldpc(x: np.ndarray, pw, ph):
     xs = np.zeros([config.dataset.num_bitplanes, N1, max(x.shape[-1] for x in bitplanes)], dtype=x.dtype)
     for i in range(config.dataset.num_bitplanes):
         xs[i, ..., : bitplanes[i].shape[-1]] = bitplanes[i]
-    print('xs:', xs.shape)
+    # print('xs:', xs.shape) # xs: (8, 512, 32)
     xs = xs.transpose([0, 2, 1]).reshape([xs.shape[0], -1])
-    print('xs 2:', xs.shape)
+    # print('xs 2:', xs.shape) # 8, 16384
     return xs
 
 
