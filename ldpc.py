@@ -54,11 +54,11 @@ def compute_metrics(eval_pred):
 
 
 try:
-    N = config.data.patch_w * config.data.patch_h
-    H2, G2 = make_ldpc(N, config.data.d_v, config.data.d_c, seed=config.data.seed, systematic=True, sparse=True)
+    N = config.dataset.patch_w * config.dataset.patch_h
+    H2, G2 = make_ldpc(N, config.dataset.d_v, config.dataset.d_c, seed=config.dataset.seed, systematic=True, sparse=True)
     print('H2:', H2.shape, H2.dtype, 'G2:', G2.shape, G2.dtype)
     N1 = 512
-    H, G = make_ldpc(N1, 4, 8, seed=config.data.seed, systematic=True, sparse=True)
+    H, G = make_ldpc(N1, 4, 8, seed=config.dataset.seed, systematic=True, sparse=True)
     print('H:', H.shape, H.dtype, 'G:', G.shape, G.dtype)
 except:
     print('NO LDPC AVAILABLE')
@@ -69,7 +69,7 @@ def get_patches(x, pw, ph):
         x = x[None]
     c, w, h = x.shape
     patches = []
-    pw, ph = config.data.patch_w, config.data.patch_h
+    pw, ph = config.dataset.patch_w, config.dataset.patch_h
     for i in range(0, w, pw):
         for j in range(0, h, ph):
             patch = x[:, i: i + pw, j: j + ph]
@@ -83,36 +83,36 @@ def get_patches(x, pw, ph):
 
 def ldpc(x: np.ndarray):
     bitplanes = []
-    pw, ph = config.data.patch_w, config.data.patch_h
+    pw, ph = config.dataset.patch_w, config.dataset.patch_h
     patches = get_patches(x, pw=pw, ph=ph)
     num_patches, c, _, _ = patches.shape
     '''
-    bitplanes = np.zeros([config.dataset.num_bitplanes, c, num_patches, pw, ph], dtype=patches.dtype)
-    for i in range(config.dataset.num_bitplanes):
+    bitplanes = np.zeros([config.datasetset.num_bitplanes, c, num_patches, pw, ph], dtype=patches.dtype)
+    for i in range(config.datasetset.num_bitplanes):
         # i = 8 - 1 - i
         mask = 1 << i
         for j, x in enumerate(patches):
             bitplane = (x & mask) >> i
             bitplanes[i, :, j, :, :] = bitplane
-    bitplanes = bitplanes.reshape((config.data.num_bitplanes * c * num_patches, pw * ph))
+    bitplanes = bitplanes.reshape((config.dataset.num_bitplanes * c * num_patches, pw * ph))
     xs = (H2.astype(np.float32) @ bitplanes.T).T
-    xs = xs.reshape((config.data.num_bitplanes * c, -1))
+    xs = xs.reshape((config.dataset.num_bitplanes * c, -1))
 
     return xs
     '''
 
     bitplanes = []
-    for i in range(config.dataset.num_bitplanes):
+    for i in range(config.datasetset.num_bitplanes):
         mask = 1 << i
         bitplane = (x & mask) # >> i
-        bin = gray2bin(bitplane) # x: [h, w], bin: [h, w, config.dataset.num_bitplanes]
-        coded, noisy = ldpc_images.encode_img(G, bin, config.dataset.snr, seed=config.dataset.seed)
-        # decoded = ldpc_images.decode_img(G, H, coded, snrconfig.dataset.snr, bin.shape)
+        bin = gray2bin(bitplane) # x: [h, w], bin: [h, w, config.datasetset.num_bitplanes]
+        coded, noisy = ldpc_images.encode_img(G, bin, config.datasetset.snr, seed=config.datasetset.seed)
+        # decoded = ldpc_images.decode_img(G, H, coded, snrconfig.datasetset.snr, bin.shape)
         # assert abs((bitplane) - decoded).mean() == 0
         bitplanes.append(coded)
         # print(f'coded {i}:', coded.mean(), coded.min(), coded.max(), coded.dtype, coded.shape)
-    xs = np.zeros([config.dataset.num_bitplanes, N1, max(x.shape[-1] for x in bitplanes)], dtype=x.dtype)
-    for i in range(config.dataset.num_bitplanes):
+    xs = np.zeros([config.datasetset.num_bitplanes, N1, max(x.shape[-1] for x in bitplanes)], dtype=x.dtype)
+    for i in range(config.datasetset.num_bitplanes):
         xs[i, ..., : bitplanes[i].shape[-1]] = bitplanes[i]
     print('xs:', xs.shape)
     xs = xs.transpose([0, 2, 1]).reshape([xs.shape[0], -1])
@@ -155,7 +155,7 @@ def get_huffman(x: np.ndarray):
     bitplanes = []
     x = x.astype(np.int32)
     # print('[get_huffman] x:', x.shape)
-    # for i in range(config.data.num_bitplanes):
+    # for i in range(config.dataset.num_bitplanes):
     for i in range(1):
         # i = 8 - 1 - i
         mask = 1 << i
@@ -180,14 +180,14 @@ def get_fullbit(y):
     ML = max(ML, ml)
     _xs = [code2np(x, max_len=ml) for x in y]
     xs = np.concatenate(_xs)
-    return xs.reshape(-1, ml) # config.data.num_bitplanes * c
+    return xs.reshape(-1, ml) # config.dataset.num_bitplanes * c
 
 
 def get_shortbit(y):
     _xs = [code2fp32(x, scale=False) for x in y]
     xs = np.concatenate(_xs)
     print('xs:', xs.shape)
-    return xs.reshape(-1, 1) # config.data.num_bitplanes * c, -1
+    return xs.reshape(-1, 1) # config.dataset.num_bitplanes * c, -1
 
 
 def get_yuv(x):
@@ -206,11 +206,11 @@ def get_bitplanes(x):
     c, w, h = x.shape
     if c == 1:
         x = gray2bin(x[0]).astype(np.float32)
-        x = x.transpose([2, 0, 1])[: config.data.num_bitplanes]
+        x = x.transpose([2, 0, 1])[: config.dataset.num_bitplanes]
     elif c == 3:
         x = rgb2bin(x.transpose([1, 2, 0])).astype(np.float32)
         x = x.transpose([2, 0, 1]).reshape([8, c, x.shape[0], x.shape[1]])
-        x = x[: config.data.num_bitplanes].reshape(config.data.num_bitplanes * c, -1)
+        x = x[: config.dataset.num_bitplanes].reshape(config.dataset.num_bitplanes * c, -1)
     return x
 
 
@@ -240,12 +240,12 @@ def main():
         'test': None,
         'train': None,
     }
-    torch.manual_seed(config.data.seed)
-    np.random.seed(config.data.seed)
+    torch.manual_seed(config.dataset.seed)
+    np.random.seed(config.dataset.seed)
 
-    dataset_name = config.data.dataset
+    dataset_name = config.dataset.dataset
     for key in list(data.keys()):
-        cached = f'data/{dataset_name}_{config.data.map_funcs}_pw{config.data.patch_w}_ph{config.data.patch_h}_{key}_100'
+        cached = f'data/{dataset_name}_{config.dataset.map_funcs}_pw{config.dataset.patch_w}_ph{config.dataset.patch_h}_{key}_100'
         try:
             # raise NotImplementedError
             data[key] = load_from_disk(cached)
@@ -253,10 +253,10 @@ def main():
         except:
             data[key] = load_dataset(f'{dataset_name}', cache_dir="data/.cache")[key]
             # data[key] = data[key].shuffle().select(range(1*config.training.per_device_train_batch_size))
-            if config.data.map_funcs:
+            if config.dataset.map_funcs:
                 def f(eg):
                     x = eg['img']
-                    for f in config.data.map_funcs.split('_'):
+                    for f in config.dataset.map_funcs.split('_'):
                         x = map_funcs[f](x)
                     eg['x'] = x.transpose(1, 0)
                     return eg
@@ -285,26 +285,26 @@ def main():
 
     stats = {}
     for run in range(config.experiments.num_runs):
-        torch.manual_seed(config.data.seed+run)
-        np.random.seed(config.data.seed+run)
-        if config.model.arch == 'gru':
+        torch.manual_seed(config.dataset.seed+run)
+        np.random.seed(config.dataset.seed+run)
+        if config.model.name == 'gru':
             model = GRU(
                 c_in=c_in,
                 gru_units=config.model.gru_units,
                 num_classes=num_classes
             )
-        elif config.model.arch == 'resnet':
+        elif config.model.name == 'resnet':
             model = URESNET18(c_in=c_in, num_classes=num_classes)
-        elif config.model.arch == 'vgg':
+        elif config.model.name == 'vgg':
             model = VGG(c_in=c_in, num_classes=num_classes)
-        elif config.model.arch == 'vit':
+        elif config.model.name == 'vit':
             conf = ViTConfig.from_pretrained('google/vit-base-patch16-224')
             conf.hidden_size = c_in
             model = ViT(config=conf, num_classes=num_classes)
         model = model.to('cuda')
 
         data_collator = DefaultDataCollator()
-        if 'huffman' in config.data.map_funcs:
+        if 'huffman' in config.dataset.map_funcs:
             class Collator(DefaultDataCollator):
                 def __call__(self, features):
                     fs = []
@@ -318,7 +318,7 @@ def main():
                     return output
 
             data_collator = Collator()
-        training_args = TrainingArguments(seed=config.data.seed+run, data_seed=config.data.seed+run, **config.training)
+        training_args = TrainingArguments(seed=config.dataset.seed+run, data_seed=config.dataset.seed+run, **config.training)
 
         trainer = Trainer(
             model=model,
