@@ -1,7 +1,7 @@
 import torch
 import os
 
-from omegaconf import OmegaConf
+import yaml
 from torchvision.transforms import Normalize
 import numpy as np
 import torch.optim as optim
@@ -53,15 +53,12 @@ def compute_metrics(eval_pred):
     return result
 
 
-try:
-    N = config.dataset.patch_w * config.dataset.patch_h
-    H2, G2 = make_ldpc(N, config.dataset.d_v, config.dataset.d_c, seed=config.dataset.seed, systematic=True, sparse=True)
-    print('H2:', H2.shape, H2.dtype, 'G2:', G2.shape, G2.dtype)
-    N1 = 512
-    H, G = make_ldpc(N1, 4, 8, seed=config.dataset.seed, systematic=True, sparse=True)
-    print('H:', H.shape, H.dtype, 'G:', G.shape, G.dtype)
-except:
-    print('NO LDPC AVAILABLE')
+N = config.dataset.patch_w * config.dataset.patch_h
+H2, G2 = make_ldpc(N, config.dataset.d_v, config.dataset.d_c, seed=config.dataset.seed, systematic=True, sparse=True)
+print('H2:', H2.shape, H2.dtype, 'G2:', G2.shape, G2.dtype)
+N1 = 512
+H, G = make_ldpc(N1, 4, 8, seed=config.dataset.seed, systematic=True, sparse=True)
+print('H:', H.shape, H.dtype, 'G:', G.shape, G.dtype)
 
 def get_patches(x, pw, ph):
     # returns: [num_patches, c, pw, ph]
@@ -69,26 +66,22 @@ def get_patches(x, pw, ph):
         x = x[None]
     c, w, h = x.shape
     patches = []
-    pw, ph = config.dataset.patch_w, config.dataset.patch_h
     for i in range(0, w, pw):
         for j in range(0, h, ph):
             patch = x[:, i: i + pw, j: j + ph]
             p = np.zeros((c, pw, ph), dtype=x.dtype)
             p[:, : patch.shape[1], : patch.shape[2]] = patch
             patches.append(p)
-    # [num_patches, c, pw, ph]
     patches = np.stack(patches, 0)
     return patches
 
-
-def ldpc(x: np.ndarray):
+def ldpc(x: np.ndarray, pw, ph):
     bitplanes = []
-    pw, ph = config.dataset.patch_w, config.dataset.patch_h
     patches = get_patches(x, pw=pw, ph=ph)
     num_patches, c, _, _ = patches.shape
     '''
-    bitplanes = np.zeros([config.datasetset.num_bitplanes, c, num_patches, pw, ph], dtype=patches.dtype)
-    for i in range(config.datasetset.num_bitplanes):
+    bitplanes = np.zeros([config.dataset.num_bitplanes, c, num_patches, pw, ph], dtype=patches.dtype)
+    for i in range(config.dataset.num_bitplanes):
         # i = 8 - 1 - i
         mask = 1 << i
         for j, x in enumerate(patches):
@@ -102,17 +95,17 @@ def ldpc(x: np.ndarray):
     '''
 
     bitplanes = []
-    for i in range(config.datasetset.num_bitplanes):
+    for i in range(config.dataset.num_bitplanes):
         mask = 1 << i
         bitplane = (x & mask) # >> i
-        bin = gray2bin(bitplane) # x: [h, w], bin: [h, w, config.datasetset.num_bitplanes]
-        coded, noisy = ldpc_images.encode_img(G, bin, config.datasetset.snr, seed=config.datasetset.seed)
-        # decoded = ldpc_images.decode_img(G, H, coded, snrconfig.datasetset.snr, bin.shape)
+        bin = gray2bin(bitplane) # x: [h, w], bin: [h, w, config.dataset.num_bitplanes]
+        coded, noisy = ldpc_images.encode_img(G, bin, config.dataset.snr, seed=config.dataset.seed)
+        # decoded = ldpc_images.decode_img(G, H, coded, snrconfig.dataset.snr, bin.shape)
         # assert abs((bitplane) - decoded).mean() == 0
         bitplanes.append(coded)
         # print(f'coded {i}:', coded.mean(), coded.min(), coded.max(), coded.dtype, coded.shape)
-    xs = np.zeros([config.datasetset.num_bitplanes, N1, max(x.shape[-1] for x in bitplanes)], dtype=x.dtype)
-    for i in range(config.datasetset.num_bitplanes):
+    xs = np.zeros([config.dataset.num_bitplanes, N1, max(x.shape[-1] for x in bitplanes)], dtype=x.dtype)
+    for i in range(config.dataset.num_bitplanes):
         xs[i, ..., : bitplanes[i].shape[-1]] = bitplanes[i]
     print('xs:', xs.shape)
     xs = xs.transpose([0, 2, 1]).reshape([xs.shape[0], -1])
@@ -134,8 +127,6 @@ def code2fp32(code, scale=False):
         it = code
     else:
         it = code.reshape(-1)
-        if it.shape[0] == 1:
-            return code.reshape(1)
     x = 0
     for j, c in enumerate(it):
         x = (x << 1) | int(c)
@@ -146,72 +137,109 @@ def code2fp32(code, scale=False):
     return x
 
 
-def get_huffman(x: np.ndarray):
-    # x: [c, w, h] or [np, c, pw, ph]
-    if len(x.shape) == 3:
-        x = x[None]
-    num_patches, c, _, _ = x.shape
-    _xs = []
+def huffman(x: np.ndarray, pw, ph, fullbit=True):
     bitplanes = []
-    x = x.astype(np.int32)
-    # print('[get_huffman] x:', x.shape)
-    # for i in range(config.dataset.num_bitplanes):
-    for i in range(1):
+    patches = get_patches(x, pw=pw, ph=ph) # x: 1 x 32 x 32, pw: 1, ph: 8, 
+    num_patches, c, _, _ = patches.shape
+    _xs = []
+    for i in range(config.dataset.num_bitplanes):
         # i = 8 - 1 - i
         mask = 1 << i
-        for j, p in enumerate(x):
-            bitplane = (p & mask) >> i
+        for j, x in enumerate(patches):
+            bitplane = (x & mask) >> i
             for k in range(c):
                 info = bitplane[k]
                 info = code2fp32(info, scale=False) # 0 0 0 0 0 0 1 1 -> 3 for each patch
-                # if i == 0 and j == 0 and k == 0:
-                    # print('info in:', bitplane[k].shape, bitplane[k], 'info out:', info.shape, info)
                 _xs.append(info)
     _xs = np.concatenate(_xs).astype(np.int32)
-    # print('_xs:', _xs.shape)
     y = huffman_encode(_xs.reshape(-1), 'prefix', save_dir='./')
-    return y
-
-
-ML = -1
-def get_fullbit(y):
     ml = max(len(x) for x in y)
-    global ML
-    ML = max(ML, ml)
-    _xs = [code2np(x, max_len=ml) for x in y]
+    if fullbit:
+        _xs = [code2np(x, max_len=ml) for x in y]
+    else:
+        _xs = [code2fp32(x, scale=False) for x in y]
     xs = np.concatenate(_xs)
-    return xs.reshape(-1, ml) # config.dataset.num_bitplanes * c
+    return xs.reshape(config.dataset.num_bitplanes * c, -1)
+    # return xs.reshape(config.dataset.num_bitplanes * c * num_patches, ml)
 
 
-def get_shortbit(y):
-    _xs = [code2fp32(x, scale=False) for x in y]
+def huffman_pix(x: np.ndarray, pw, ph, fullbit=True):
+    bitplanes = []
+    patches = get_patches(x, pw=pw, ph=ph)
+    num_patches, c, _, _ = patches.shape
+    _xs = []
+    for j, x in enumerate(patches): # todo c first or patch first?
+        for k in range(c):
+            info = x[k]
+            _xs += info.reshape(-1).tolist()
+    _xs = np.asarray(_xs).astype(np.int32)
+    y = huffman_encode(_xs.reshape(-1), 'prefix', save_dir='./')
+    ml = max(len(x) for x in y)
+    if fullbit:
+        _xs = [code2np(x, max_len=ml) for x in y]
+    else:
+        _xs = [code2fp32(x, scale=False) for x in y]
     xs = np.concatenate(_xs)
-    print('xs:', xs.shape)
-    return xs.reshape(-1, 1) # config.dataset.num_bitplanes * c, -1
+    return xs.reshape(config.dataset.num_bitplanes * c, -1)
+    # return xs.reshape(config.dataset.num_bitplanes * c * num_patches, ml)
 
 
-def get_yuv(x):
-    x = x.convert('YCbCr')
-    x = np.asarray(x)[None, :, :, 0] # [1, w, h]
-    return x
+def yuv_y(eg):
+    x = eg['img'].convert('YCbCr')
+    x = np.asarray(x)[:, :, 0]
+    x = gray2bin(x).astype(np.float32)
+    x = x.transpose([2, 0, 1])[: config.dataset.num_bitplanes].reshape(config.dataset.num_bitplanes, -1)
+    x = torch.tensor(x)
+    eg['x'] = x
+    return eg
 
 
-def get_rgb(x):
-    x = x.convert('RGB')
-    x = np.asarray(x).transpose([2, 0, 1]) # [3, w, h]
-    return x
+def yuv_ldpc(eg):
+    x = eg['img'].convert('YCbCr')
+    x = np.asarray(x)[:, :, 0]
+    x = ldpc(x, pw=config.dataset.patch_w, ph=config.dataset.patch_h).astype(np.float32)
+    x = torch.tensor(x) # b, config.dataset.num_bitplanes, n, t
+    eg['x'] = x
+    return eg
 
 
-def get_bitplanes(x):
-    c, w, h = x.shape
-    if c == 1:
-        x = gray2bin(x[0]).astype(np.float32)
-        x = x.transpose([2, 0, 1])[: config.dataset.num_bitplanes]
-    elif c == 3:
-        x = rgb2bin(x.transpose([1, 2, 0])).astype(np.float32)
-        x = x.transpose([2, 0, 1]).reshape([8, c, x.shape[0], x.shape[1]])
-        x = x[: config.dataset.num_bitplanes].reshape(config.dataset.num_bitplanes * c, -1)
-    return x
+def yuv_huffman(eg):
+    x = eg['img'].convert('YCbCr')
+    x = np.asarray(x)[:, :, 0]
+    x = huffman(x, pw=config.dataset.patch_w, ph=config.dataset.patch_h).astype(np.float32)
+    x = torch.tensor(x) # b, config.dataset.num_bitplanes, n, t
+    eg['x'] = x
+    return eg
+
+
+def rgb(eg):
+    x = eg['img'].convert('RGB')
+    x = np.asarray(x)
+    x = rgb2bin(x).astype(np.float32)
+    c = 3
+    x = x.transpose([2, 0, 1]).reshape([8, c, x.shape[0], x.shape[1]])
+    x = x[: config.dataset.num_bitplanes].reshape(config.dataset.num_bitplanes * c, -1)
+    x = torch.tensor(x)
+    eg['x'] = x
+    return eg
+
+
+def rgb_ldpc(eg):
+    x = eg['img'].convert('RGB')
+    x = np.asarray(x).transpose([2, 0, 1])
+    x = ldpc(x, pw=config.dataset.patch_w, ph=config.dataset.patch_h).astype(np.float32)
+    x = torch.tensor(x) # b, config.dataset.num_bitplanes, n, t
+    eg['x'] = x
+    return eg
+
+
+def rgb_huffman(eg):
+    x = eg['img'].convert('RGB')
+    x = np.asarray(x).transpose([2, 0, 1])
+    x = huffman_pix(x, pw=config.dataset.patch_w, ph=config.dataset.patch_h).astype(np.float32)
+    x = torch.tensor(x) # b, config.dataset.num_bitplanes, n, t
+    eg['x'] = x
+    return eg
 
 
 def cifar100(eg):
@@ -221,13 +249,12 @@ def cifar100(eg):
 
 
 map_funcs = {
-    'yuv': get_yuv,
-    'rgb': get_rgb,
-    'bitplanes': get_bitplanes,
-    'patches': get_patches,
-    'huffman': get_huffman,
-    'fullbit': get_fullbit,
-    'shortbit': get_shortbit,
+    'yuv_y': yuv_y,
+    'rgb': rgb,
+    'yuv_ldpc': yuv_ldpc,
+    'rgb_ldpc': rgb_ldpc,
+    'yuv_huffman': yuv_huffman,
+    'rgb_huffman': rgb_huffman,
 }
 
 
@@ -254,18 +281,12 @@ def main():
             data[key] = load_dataset(f'{dataset_name}', cache_dir="data/.cache")[key]
             # data[key] = data[key].shuffle().select(range(1*config.training.per_device_train_batch_size))
             if config.dataset.map_funcs:
-                def f(eg):
-                    x = eg['img']
-                    for f in config.dataset.map_funcs.split('_'):
-                        x = map_funcs[f](x)
-                    eg['x'] = x.transpose(1, 0)
-                    return eg
-                data[key] = data[key].map(f, remove_columns=['img'])
+                data[key] = data[key].map(map_funcs[config.dataset.map_funcs], remove_columns=['img'])
             if '100' in dataset_name:
                 data[key] = data[key].map(cifar100, remove_columns=['coarse_label', 'fine_label'])
             data[key].set_format(type='torch')
-            # os.makedirs('data', exist_ok=True)
-            # data[key].save_to_disk(cached)
+            os.makedirs('data', exist_ok=True)
+            data[key].save_to_disk(cached)
         print(key, len(data[key]), data[key])
         data[key + '_loader'] = torch.utils.data.DataLoader(data[key], batch_size=config.training.per_device_train_batch_size, shuffle=key=='train')
 
@@ -276,15 +297,12 @@ def main():
         images, labels = batch['x'], batch['label']
         print('image:', images.mean(), images.min(), images.max(), images.dtype, images.shape)
         print('labels:', labels.shape)
-        c_in, t = images.shape
-        if ML > -1:
-            c_in = ML
-        print('c_in:', c_in)
+        c_in = images.shape[-2]
         break
     # exit()
 
     stats = {}
-    for run in range(config.experiments.num_runs):
+    for run in range(config.num_runs):
         torch.manual_seed(config.dataset.seed+run)
         np.random.seed(config.dataset.seed+run)
         if config.model.name == 'gru':
@@ -308,9 +326,9 @@ def main():
             class Collator(DefaultDataCollator):
                 def __call__(self, features):
                     fs = []
-                    xs = np.zeros([len(features), max(z['x'].shape[0] for z in features), features[0]['x'].shape[1]]).astype(np.float32)
+                    xs = np.zeros([len(features), features[0]['x'].shape[0], max(z['x'].shape[1] for z in features)]).astype(np.float32)
                     for i, b in enumerate(features):
-                        xs[i, : b['x'].shape[0], :] = b['x']
+                        xs[i, :, : b['x'].shape[1]] = b['x']
                         b.pop('x')
                         fs.append(b)
                     output = super().__call__(fs)
