@@ -243,7 +243,7 @@ def main():
     torch.manual_seed(config.dataset.seed)
     np.random.seed(config.dataset.seed)
 
-    dataset_name = config.dataset.dataset
+    dataset_name = config.dataset.name
     for key in list(data.keys()):
         cached = f'data/{dataset_name}_{config.dataset.map_funcs}_pw{config.dataset.patch_w}_ph{config.dataset.patch_h}_{key}_100'
         try:
