@@ -1,16 +1,16 @@
 dataset:
     name: 'cifar10'
-    map_funcs: 'rgb_huffman'
+    map_funcs: 'rgb_ldpc'
     num_bitplanes: 8
     d_v: 4
     d_c: 8
     snr: 8
     seed: 42
-    patch_w: 1
-    patch_h: 8
+    patch_w: 4
+    patch_h: 4
 
 model:
-    name: 'resnet'
+    name: 'vgg'
     gru_units: 32
 
 num_runs: 1

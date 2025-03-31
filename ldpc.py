@@ -52,30 +52,6 @@ def compute_metrics(eval_pred):
     result |= load_rec.compute(predictions=predictions, references=references, average='micro')
     return result
 
-'''
-from DCVC_src.models.waseda import (
-    Cheng2020Anchor
-)
-device = 'cuda'
-i_frame_load_checkpoint = torch.load('/home/v-dongyaozhu/DCVC/DCVC/checkpoints/cheng2020-anchor-3-e49be189.pth.tar', map_location=torch.device('cpu'))
-i_frame_net = Cheng2020Anchor.from_state_dict(i_frame_load_checkpoint).eval()
-i_frame_net = i_frame_net.to(device)
-i_frame_net.eval()
-
-def get_ldpc(x):
-    with torch.no_grad():
-        result = i_frame_net(x[None].to(device))
-    y = result['y'].cpu()[0]
-    z = result['z'].cpu()[0]
-    py = result['likelihoods']['y'].cpu()[0]
-    pz = result['likelihoods']['z'].cpu()[0]
-    return {
-        'y': y,
-        'z': z,
-        'py': py,
-        'pz': pz,
-    }
-'''
 
 N = config.dataset.patch_w * config.dataset.patch_h
 H2, G2 = make_ldpc(N, config.dataset.d_v, config.dataset.d_c, seed=config.dataset.seed, systematic=True, sparse=True)
@@ -85,6 +61,7 @@ H, G = make_ldpc(N1, 4, 8, seed=config.dataset.seed, systematic=True, sparse=Tru
 print('H:', H.shape, H.dtype, 'G:', G.shape, G.dtype)
 
 def get_patches(x, pw, ph):
+    # returns: [num_patches, c, pw, ph]
     if len(x.shape) == 2:
         x = x[None]
     c, w, h = x.shape
@@ -102,6 +79,7 @@ def ldpc(x: np.ndarray, pw, ph):
     bitplanes = []
     patches = get_patches(x, pw=pw, ph=ph)
     num_patches, c, _, _ = patches.shape
+    '''
     bitplanes = np.zeros([config.dataset.num_bitplanes, c, num_patches, pw, ph], dtype=patches.dtype)
     for i in range(config.dataset.num_bitplanes):
         # i = 8 - 1 - i
@@ -114,6 +92,7 @@ def ldpc(x: np.ndarray, pw, ph):
     xs = xs.reshape((config.dataset.num_bitplanes * c, -1))
 
     return xs
+    '''
 
     bitplanes = []
     for i in range(config.dataset.num_bitplanes):
@@ -128,7 +107,9 @@ def ldpc(x: np.ndarray, pw, ph):
     xs = np.zeros([config.dataset.num_bitplanes, N1, max(x.shape[-1] for x in bitplanes)], dtype=x.dtype)
     for i in range(config.dataset.num_bitplanes):
         xs[i, ..., : bitplanes[i].shape[-1]] = bitplanes[i]
+    print('xs:', xs.shape)
     xs = xs.transpose([0, 2, 1]).reshape([xs.shape[0], -1])
+    print('xs 2:', xs.shape)
     return xs
 
 
@@ -278,9 +259,10 @@ map_funcs = {
 
 
 def main():
-    os.makedirs(config.training.output_dir)
-    with open(os.path.join(config.training.output_dir, '_config.yaml'), 'w') as file:
-        yaml.dump(config, file, indent=4)
+    os.makedirs(config.training.output_dir, exist_ok=True)
+    # with open(os.path.join(config.training.output_dir, '_config.yaml'), 'w') as file:
+    #     yaml.dump(config, file, indent=4)
+    os.environ['HF_HOME'] = "C:/Users/cornu/Desktop/compressed/data/.cache"
     data = {
         'test': None,
         'train': None,
@@ -292,11 +274,11 @@ def main():
     for key in list(data.keys()):
         cached = f'data/{dataset_name}_{config.dataset.map_funcs}_pw{config.dataset.patch_w}_ph{config.dataset.patch_h}_{key}_100'
         try:
-            raise NotImplementedError
+            # raise NotImplementedError
             data[key] = load_from_disk(cached)
             print(f'loaded {key} from {cached}')
         except:
-            data[key] = load_dataset(f'{dataset_name}')[key]
+            data[key] = load_dataset(f'{dataset_name}', cache_dir="data/.cache")[key]
             # data[key] = data[key].shuffle().select(range(1*config.training.per_device_train_batch_size))
             if config.dataset.map_funcs:
                 data[key] = data[key].map(map_funcs[config.dataset.map_funcs], remove_columns=['img'])
@@ -309,7 +291,6 @@ def main():
         data[key + '_loader'] = torch.utils.data.DataLoader(data[key], batch_size=config.training.per_device_train_batch_size, shuffle=key=='train')
 
     num_classes = 100 if '100' in dataset_name else 10
-    num_classes = 10
 
     # get some random training images
     for batch in data['train']:
@@ -340,48 +321,6 @@ def main():
             model = ViT(config=conf, num_classes=num_classes)
         model = model.to('cuda')
 
-        '''
-        optimizer = optim.Adam(model.parameters(), lr=config.training.learning_rate)
-
-        for epoch in range(config.training.num_train_epochs):  # loop over the dataset multiple times
-            running_loss = 0.0
-            for i, batch in tqdm(enumerate(data['train_loader'], 0), desc=f'Epoch {epoch}'):
-                inputs, labels = batch['x'], batch['label']
-                inputs, labels = inputs.to('cuda'), labels.to('cuda')
-
-                optimizer.zero_grad()
-
-                outputs = model(inputs, labels)
-                loss = outputs['loss']
-                loss.backward()
-                optimizer.step()
-
-                # print statistics
-                running_loss += loss.item()
-                if i % 200 == 199:    # print every 2000 mini-batches
-                    print(f' loss: {running_loss / 200:.3f}')
-                    running_loss = 0.0
-
-        print('Finished Training')
-
-        correct = 0
-        total = 0
-
-        model.eval()
-        with torch.no_grad():
-            for batch in data['test_loader']:
-                inputs, labels = batch['x'], batch['label']
-                inputs, labels = inputs.to('cuda'), labels.to('cuda')
-                outputs = model(inputs)
-                # the class with the highest energy is what we choose as prediction
-                _, predicted = torch.max(outputs['logits'].data, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
-
-                _, predictions = torch.max(outputs['logits'], 1)
-
-        print(f'Accuracy: {100 * correct / total} %')
-        # '''
         data_collator = DefaultDataCollator()
         if 'huffman' in config.dataset.map_funcs:
             class Collator(DefaultDataCollator):
@@ -417,7 +356,7 @@ def main():
         # '''
     print('******** mean ********')
     for k in stats:
-        stats[k] = np.array(stats[k]) * 100
+        stats[k] = np.array(stats[k])
         print(f'{k}:', f'{np.mean(stats[k]):.1f} +- {np.std(stats[k]):.1f}')
 
 
