@@ -53,11 +53,11 @@ def compute_metrics(eval_pred):
     return result
 
 
-N = config.dataset.patch_w * config.dataset.patch_h
-H2, G2 = make_ldpc(N, config.dataset.d_v, config.dataset.d_c, seed=config.dataset.seed, systematic=True, sparse=True)
+N = config.patch_w * config.patch_h
+H2, G2 = make_ldpc(N, config.d_v, config.d_c, seed=config.seed, systematic=True, sparse=True)
 print('H2:', H2.shape, H2.dtype, 'G2:', G2.shape, G2.dtype)
 N1 = 512
-H, G = make_ldpc(N1, 4, 8, seed=config.dataset.seed, systematic=True, sparse=True)
+H, G = make_ldpc(N1, 4, 8, seed=config.seed, systematic=True, sparse=True)
 print('H:', H.shape, H.dtype, 'G:', G.shape, G.dtype)
 
 def get_patches(x, pw, ph):
@@ -80,32 +80,32 @@ def ldpc(x: np.ndarray, pw, ph):
     patches = get_patches(x, pw=pw, ph=ph)
     num_patches, c, _, _ = patches.shape
     '''
-    bitplanes = np.zeros([config.dataset.num_bitplanes, c, num_patches, pw, ph], dtype=patches.dtype)
-    for i in range(config.dataset.num_bitplanes):
+    bitplanes = np.zeros([config.num_bitplanes, c, num_patches, pw, ph], dtype=patches.dtype)
+    for i in range(config.num_bitplanes):
         # i = 8 - 1 - i
         mask = 1 << i
         for j, x in enumerate(patches):
             bitplane = (x & mask) >> i
             bitplanes[i, :, j, :, :] = bitplane
-    bitplanes = bitplanes.reshape((config.dataset.num_bitplanes * c * num_patches, pw * ph))
+    bitplanes = bitplanes.reshape((config.num_bitplanes * c * num_patches, pw * ph))
     xs = (H2.astype(np.float32) @ bitplanes.T).T
-    xs = xs.reshape((config.dataset.num_bitplanes * c, -1))
+    xs = xs.reshape((config.num_bitplanes * c, -1))
 
     return xs
     '''
 
     bitplanes = []
-    for i in range(config.dataset.num_bitplanes):
+    for i in range(config.num_bitplanes):
         mask = 1 << i
         bitplane = (x & mask) # >> i
-        bin = gray2bin(bitplane) # x: [h, w], bin: [h, w, config.dataset.num_bitplanes]
-        coded, noisy = ldpc_images.encode_img(G, bin, config.dataset.snr, seed=config.dataset.seed)
+        bin = gray2bin(bitplane) # x: [h, w], bin: [h, w, config.num_bitplanes]
+        coded, noisy = ldpc_images.encode_img(G, bin, config.snr, seed=config.seed)
         # decoded = ldpc_images.decode_img(G, H, coded, snrconfig.dataset.snr, bin.shape)
         # assert abs((bitplane) - decoded).mean() == 0
         bitplanes.append(coded)
         # print(f'coded {i}:', coded.mean(), coded.min(), coded.max(), coded.dtype, coded.shape)
-    xs = np.zeros([config.dataset.num_bitplanes, N1, max(x.shape[-1] for x in bitplanes)], dtype=x.dtype)
-    for i in range(config.dataset.num_bitplanes):
+    xs = np.zeros([config.num_bitplanes, N1, max(x.shape[-1] for x in bitplanes)], dtype=x.dtype)
+    for i in range(config.num_bitplanes):
         xs[i, ..., : bitplanes[i].shape[-1]] = bitplanes[i]
     # print('xs:', xs.shape) # xs: (8, 512, 32)
     xs = xs.transpose([0, 2, 1]).reshape([xs.shape[0], -1])
@@ -142,7 +142,7 @@ def huffman(x: np.ndarray, pw, ph, fullbit=True):
     patches = get_patches(x, pw=pw, ph=ph) # x: 1 x 32 x 32, pw: 1, ph: 8, 
     num_patches, c, _, _ = patches.shape
     _xs = []
-    for i in range(config.dataset.num_bitplanes):
+    for i in range(config.num_bitplanes):
         # i = 8 - 1 - i
         mask = 1 << i
         for j, x in enumerate(patches):
@@ -159,8 +159,8 @@ def huffman(x: np.ndarray, pw, ph, fullbit=True):
     else:
         _xs = [code2fp32(x, scale=False) for x in y]
     xs = np.concatenate(_xs)
-    return xs.reshape(config.dataset.num_bitplanes * c, -1)
-    # return xs.reshape(config.dataset.num_bitplanes * c * num_patches, ml)
+    return xs.reshape(config.num_bitplanes * c, -1)
+    # return xs.reshape(config.num_bitplanes * c * num_patches, ml)
 
 
 def huffman_pix(x: np.ndarray, pw, ph, fullbit=True):
@@ -180,15 +180,15 @@ def huffman_pix(x: np.ndarray, pw, ph, fullbit=True):
     else:
         _xs = [code2fp32(x, scale=False) for x in y]
     xs = np.concatenate(_xs)
-    return xs.reshape(config.dataset.num_bitplanes * c, -1)
-    # return xs.reshape(config.dataset.num_bitplanes * c * num_patches, ml)
+    return xs.reshape(config.num_bitplanes * c, -1)
+    # return xs.reshape(config.num_bitplanes * c * num_patches, ml)
 
 
 def yuv_y(eg):
     x = eg['img'].convert('YCbCr')
     x = np.asarray(x)[:, :, 0]
     x = gray2bin(x).astype(np.float32)
-    x = x.transpose([2, 0, 1])[: config.dataset.num_bitplanes].reshape(config.dataset.num_bitplanes, -1)
+    x = x.transpose([2, 0, 1])[: config.num_bitplanes].reshape(config.num_bitplanes, -1)
     x = torch.tensor(x)
     eg['x'] = x
     return eg
@@ -197,8 +197,8 @@ def yuv_y(eg):
 def yuv_ldpc(eg):
     x = eg['img'].convert('YCbCr')
     x = np.asarray(x)[:, :, 0]
-    x = ldpc(x, pw=config.dataset.patch_w, ph=config.dataset.patch_h).astype(np.float32)
-    x = torch.tensor(x) # b, config.dataset.num_bitplanes, n, t
+    x = ldpc(x, pw=config.patch_w, ph=config.patch_h).astype(np.float32)
+    x = torch.tensor(x) # b, config.num_bitplanes, n, t
     eg['x'] = x
     return eg
 
@@ -206,8 +206,8 @@ def yuv_ldpc(eg):
 def yuv_huffman(eg):
     x = eg['img'].convert('YCbCr')
     x = np.asarray(x)[:, :, 0]
-    x = huffman(x, pw=config.dataset.patch_w, ph=config.dataset.patch_h).astype(np.float32)
-    x = torch.tensor(x) # b, config.dataset.num_bitplanes, n, t
+    x = huffman(x, pw=config.patch_w, ph=config.patch_h).astype(np.float32)
+    x = torch.tensor(x) # b, config.num_bitplanes, n, t
     eg['x'] = x
     return eg
 
@@ -218,7 +218,7 @@ def rgb(eg):
     x = rgb2bin(x).astype(np.float32)
     c = 3
     x = x.transpose([2, 0, 1]).reshape([8, c, x.shape[0], x.shape[1]])
-    x = x[: config.dataset.num_bitplanes].reshape(config.dataset.num_bitplanes * c, -1)
+    x = x[: config.num_bitplanes].reshape(config.num_bitplanes * c, -1)
     x = torch.tensor(x)
     eg['x'] = x
     return eg
@@ -227,8 +227,8 @@ def rgb(eg):
 def rgb_ldpc(eg):
     x = eg['img'].convert('RGB')
     x = np.asarray(x).transpose([2, 0, 1])
-    x = ldpc(x, pw=config.dataset.patch_w, ph=config.dataset.patch_h).astype(np.float32)
-    x = torch.tensor(x) # b, config.dataset.num_bitplanes, n, t
+    x = ldpc(x, pw=config.patch_w, ph=config.patch_h).astype(np.float32)
+    x = torch.tensor(x) # b, config.num_bitplanes, n, t
     eg['x'] = x
     return eg
 
@@ -236,8 +236,8 @@ def rgb_ldpc(eg):
 def rgb_huffman(eg):
     x = eg['img'].convert('RGB')
     x = np.asarray(x).transpose([2, 0, 1])
-    x = huffman_pix(x, pw=config.dataset.patch_w, ph=config.dataset.patch_h).astype(np.float32)
-    x = torch.tensor(x) # b, config.dataset.num_bitplanes, n, t
+    x = huffman_pix(x, pw=config.patch_w, ph=config.patch_h).astype(np.float32)
+    x = torch.tensor(x) # b, config.num_bitplanes, n, t
     eg['x'] = x
     return eg
 
@@ -267,21 +267,20 @@ def main():
         'test': None,
         'train': None,
     }
-    torch.manual_seed(config.dataset.seed)
-    np.random.seed(config.dataset.seed)
+    torch.manual_seed(config.seed)
+    np.random.seed(config.seed)
 
-    dataset_name = config.dataset.name
+    dataset_name = config.dataset
     for key in list(data.keys()):
-        cached = f'data/{dataset_name}_{config.dataset.map_funcs}_pw{config.dataset.patch_w}_ph{config.dataset.patch_h}_{key}_100'
-        try:
-            # raise NotImplementedError
+        cached = f'data/{dataset_name}_{config.map_funcs}_pw{config.patch_w}_ph{config.patch_h}_{key}_100'
+        if os.path.isdir(cached):
             data[key] = load_from_disk(cached)
             print(f'loaded {key} from {cached}')
-        except:
+        else:
             data[key] = load_dataset(f'{dataset_name}', cache_dir="data/.cache", split=key)#, streaming=True)#[key]
             # data[key] = data[key].shuffle().select(range(1*config.training.per_device_train_batch_size))
-            if config.dataset.map_funcs:
-                data[key] = data[key].map(map_funcs[config.dataset.map_funcs], remove_columns=['img'], num_proc=4)
+            if config.map_funcs:
+                data[key] = data[key].map(map_funcs[config.map_funcs], remove_columns=['img'], num_proc=os.cpu_count())
             if '100' in dataset_name:
                 data[key] = data[key].map(cifar100, remove_columns=['coarse_label', 'fine_label'])
             data[key].set_format(type='pt')
@@ -305,26 +304,26 @@ def main():
 
     stats = {}
     for run in range(config.num_runs):
-        torch.manual_seed(config.dataset.seed+run)
-        np.random.seed(config.dataset.seed+run)
-        if config.model.name == 'gru':
+        torch.manual_seed(config.seed+run)
+        np.random.seed(config.seed+run)
+        if config.model == 'gru':
             model = GRU(
                 c_in=c_in,
-                gru_units=config.model.gru_units,
+                gru_units=config.gru_units,
                 num_classes=num_classes
             )
-        elif config.model.name == 'resnet':
+        elif config.model == 'resnet':
             model = URESNET18(c_in=c_in, num_classes=num_classes)
-        elif config.model.name == 'vgg':
+        elif config.model == 'vgg':
             model = VGG(c_in=c_in, num_classes=num_classes)
-        elif config.model.name == 'vit':
+        elif config.model == 'vit':
             conf = ViTConfig.from_pretrained('google/vit-base-patch16-224')
             conf.hidden_size = c_in
             model = ViT(config=conf, num_classes=num_classes)
         model = model.to('cuda')
 
         data_collator = DefaultDataCollator()
-        if 'huffman' in config.dataset.map_funcs:
+        if 'huffman' in config.map_funcs:
             class Collator(DefaultDataCollator):
                 def __call__(self, features):
                     fs = []
@@ -344,7 +343,7 @@ def main():
                 fs = []
                 xs = []
                 for i, b in enumerate(features):
-                    xs.append(map_funcs[config.dataset.map_funcs](b)['x'])
+                    xs.append(map_funcs[config.map_funcs](b)['x'])
                     fs.append(b['label'])
                 xs = torch.stack(xs, 0)
                 ys = torch.tensor(fs).long()
@@ -356,8 +355,8 @@ def main():
             # data_collator = collate
         training_args = TrainingArguments(
             remove_unused_columns=False,
-            seed=config.dataset.seed+run,
-            data_seed=config.dataset.seed+run,
+            seed=config.seed+run,
+            data_seed=config.seed+run,
             **config.training
         )
 
