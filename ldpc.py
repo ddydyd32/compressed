@@ -259,8 +259,8 @@ map_funcs = {
 
 
 def main():
-    os.makedirs(config.training.output_dir, exist_ok=True)
-    # with open(os.path.join(config.training.output_dir, '_config.yaml'), 'w') as file:
+    os.makedirs(config.output_dir, exist_ok=True)
+    # with open(os.path.join(config.output_dir, '_config.yaml'), 'w') as file:
     #     yaml.dump(config, file, indent=4)
     os.environ['HF_HOME'] = "C:/Users/cornu/Desktop/compressed/data/.cache"
     data = {
@@ -275,10 +275,11 @@ def main():
         cached = f'data/{dataset_name}_{config.map_funcs}_pw{config.patch_w}_ph{config.patch_h}_{key}_100'
         if os.path.isdir(cached):
             data[key] = load_from_disk(cached)
+            data[key] = data[key].shuffle().select(range(1*config.per_device_train_batch_size))
             print(f'loaded {key} from {cached}')
         else:
             data[key] = load_dataset(f'{dataset_name}', cache_dir="data/.cache", split=key)#, streaming=True)#[key]
-            # data[key] = data[key].shuffle().select(range(1*config.training.per_device_train_batch_size))
+            data[key] = data[key].shuffle().select(range(1*config.per_device_train_batch_size))
             if config.map_funcs:
                 data[key] = data[key].map(map_funcs[config.map_funcs], remove_columns=['img'], num_proc=os.cpu_count())
             if '100' in dataset_name:
@@ -287,7 +288,7 @@ def main():
             os.makedirs('data', exist_ok=True)
             data[key].save_to_disk(cached)
         print(key, data[key])
-        # data[key + '_loader'] = torch.utils.data.DataLoader(data[key], batch_size=config.training.per_device_train_batch_size, shuffle=key=='train')
+        # data[key + '_loader'] = torch.utils.data.DataLoader(data[key], batch_size=config.per_device_train_batch_size, shuffle=key=='train')
 
     num_classes = 100 if '100' in dataset_name else 10
 
@@ -356,8 +357,28 @@ def main():
         training_args = TrainingArguments(
             remove_unused_columns=False,
             seed=config.seed+run,
-            data_seed=config.seed+run,
-            **config.training
+            data_seed=config.pop('seed')+run,
+            output_dir=config.output_dir,
+            learning_rate=config.learning_rate,
+            per_device_train_batch_size=config.per_device_train_batch_size,
+            per_device_eval_batch_size=config.per_device_eval_batch_size,
+            gradient_accumulation_steps=config.gradient_accumulation_steps,
+            gradient_checkpointing=config.gradient_checkpointing,
+            max_grad_norm=config.max_grad_norm,
+            bf16=config.bf16,
+            fp16=config.fp16,
+            num_train_epochs=config.num_train_epochs,
+            weight_decay=config.weight_decay,
+            lr_scheduler_type=config.lr_scheduler_type,
+            warmup_ratio=config.warmup_ratio,
+            do_eval=config.do_eval,
+            evaluation_strategy=config.evaluation_strategy,
+            eval_steps=config.eval_steps,
+            logging_strategy=config.logging_strategy,
+            logging_steps=config.logging_steps,
+            save_strategy=config.save_strategy,
+            save_total_limit=config.save_total_limit,
+            report_to=config.report_to,
         )
 
         trainer = Trainer(

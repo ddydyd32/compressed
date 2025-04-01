@@ -9,3 +9,4 @@ torchaudio==2.6.0
 torchvision==0.21.0
 tf-keras
 pillow==10.1.0
+accelerate
