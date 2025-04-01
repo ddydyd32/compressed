@@ -46,6 +46,8 @@ for map_funcs in ${MAP_FUNCS[@]} ; do
                     --fullbit True \
                     --output_dir "logs" > "logs/${output_dir}.log"
             done
+            rm -rf "data/${dataset}_${map_funcs}_pw${patch_w}_ph${patch_h}_test_100"
+            rm -rf "data/${dataset}_${map_funcs}_pw${patch_w}_ph${patch_h}_train_100"
         done
     done
 done
