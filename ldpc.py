@@ -278,26 +278,28 @@ def main():
             data[key] = load_from_disk(cached)
             print(f'loaded {key} from {cached}')
         except:
-            data[key] = load_dataset(f'{dataset_name}', cache_dir="data/.cache")[key]
+            data[key] = load_dataset(f'{dataset_name}', cache_dir="data/.cache", split=key)#, streaming=True)#[key]
             # data[key] = data[key].shuffle().select(range(1*config.training.per_device_train_batch_size))
             if config.dataset.map_funcs:
-                data[key] = data[key].map(map_funcs[config.dataset.map_funcs], remove_columns=['img'])
+                data[key] = data[key].map(map_funcs[config.dataset.map_funcs], remove_columns=['img'], num_proc=4)
             if '100' in dataset_name:
                 data[key] = data[key].map(cifar100, remove_columns=['coarse_label', 'fine_label'])
-            data[key].set_format(type='torch')
+            data[key].set_format(type='pt')
             os.makedirs('data', exist_ok=True)
             data[key].save_to_disk(cached)
-        print(key, len(data[key]), data[key])
-        data[key + '_loader'] = torch.utils.data.DataLoader(data[key], batch_size=config.training.per_device_train_batch_size, shuffle=key=='train')
+        print(key, data[key])
+        # data[key + '_loader'] = torch.utils.data.DataLoader(data[key], batch_size=config.training.per_device_train_batch_size, shuffle=key=='train')
 
     num_classes = 100 if '100' in dataset_name else 10
 
     # get some random training images
     for batch in data['train']:
+        # print(batch)
         images, labels = batch['x'], batch['label']
         print('image:', images.mean(), images.min(), images.max(), images.dtype, images.shape)
-        print('labels:', labels.shape)
+        print('labels:', labels)
         c_in = images.shape[-2]
+        # c_in = 8
         break
     # exit()
 
@@ -334,9 +336,30 @@ def main():
                     output = super().__call__(fs)
                     output['x'] = torch.tensor(xs, device=output['labels'].device)
                     return output
-
             data_collator = Collator()
-        training_args = TrainingArguments(seed=config.dataset.seed+run, data_seed=config.dataset.seed+run, **config.training)
+        else:
+            def collate(features):
+                # xs = np.zeros([len(features), 8, 16384]).astype(np.float32)
+                # fs = np.ones(len(features))
+                fs = []
+                xs = []
+                for i, b in enumerate(features):
+                    xs.append(map_funcs[config.dataset.map_funcs](b)['x'])
+                    fs.append(b['label'])
+                xs = torch.stack(xs, 0)
+                ys = torch.tensor(fs).long()
+                output = {
+                    'x': xs,
+                    'labels': ys
+                }
+                return output
+            # data_collator = collate
+        training_args = TrainingArguments(
+            remove_unused_columns=False,
+            seed=config.dataset.seed+run,
+            data_seed=config.dataset.seed+run,
+            **config.training
+        )
 
         trainer = Trainer(
             model=model,
