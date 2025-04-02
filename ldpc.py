@@ -97,19 +97,23 @@ def ldpc(x: np.ndarray, pw, ph):
 
     bitplanes = []
     for patch in patches:
-        bin = gray2bin(patch) if c == 2 else rgb2bin(patch) # x: [h, w], bin: [h, w, config.num_bitplanes]
+        # patch: [c, pw, ph]
+        # bin: [h, w, 8]
+        bin = gray2bin(patch[0]) if c == 1 else rgb2bin(patch.transpose([1,2,0]))
+        if c == 1:
+            bin[:, :, config.num_bitplanes: ] = 0
+        else:
+            bin[:, :, config.num_bitplanes: 8] = 0
+            bin[:, :, 8 + config.num_bitplanes: 16] = 0
+            bin[:, :, 16 + config.num_bitplanes: 24] = 0
+        # coded: [512, 1]
         coded, noisy = ldpc_images.encode_img(G, bin, config.snr, seed=config.seed)
         # decoded = ldpc_images.decode_img(G, H, coded, snrconfig.dataset.snr, bin.shape)
         # assert abs((bitplane) - decoded).mean() == 0
         bitplanes.append(coded)
-        print(f'patch:', patch.mean(), patch.min(), patch.max(), patch.dtype, patch.shape, patch)
-        print(f'bin:', bin.mean(), bin.min(), bin.max(), bin.dtype, bin.shape, bin)
-        print(f'coded:', coded.mean(), coded.min(), coded.max(), coded.dtype, coded.shape)
-    xs = np.zeros([config.num_bitplanes, N1, max(x.shape[-1] for x in bitplanes)], dtype=x.dtype)
-    for i in range(config.num_bitplanes):
-        xs[i, ..., : bitplanes[i].shape[-1]] = bitplanes[i]
-    # print('xs:', xs.shape) # xs: (8, 512, 32)
-    xs = xs.transpose([0, 2, 1]).reshape([xs.shape[0], -1])
+    xs = np.concatenate(bitplanes, 1)
+    # print('xs:', xs.shape) # xs: (512, pw*ph)
+    # xs = xs.transpose([0, 2, 1]).reshape([xs.shape[0], -1])
     # print('xs 2:', xs.shape) # 8, 16384
     return xs
 
