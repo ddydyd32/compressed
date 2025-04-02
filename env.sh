@@ -8,6 +8,6 @@ pip install -q omegaconf
 pip install -q datasets
 pip install -q evaluate
 pip install -q transformers==4.49.0
-pip install -q tf-keras
+pip install -q keras==2.15.0 tensorflow==2.15.0
 pip install -q pillow==10.1.0
 pip install -q accelerate

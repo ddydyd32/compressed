@@ -33,7 +33,7 @@ lr_scheduler_type: "cosine"
 warmup_ratio: 0.05
 
 do_eval: true
-evaluation_strategy: "epoch"
+eval_strategy: "epoch"
 eval_steps: 10
 logging_strategy: "epoch"
 logging_steps: 10

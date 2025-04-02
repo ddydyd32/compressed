@@ -53,9 +53,9 @@ def compute_metrics(eval_pred):
     return result
 
 
-N = config.patch_w * config.patch_h
-H2, G2 = make_ldpc(N, config.d_v, config.d_c, seed=config.seed, systematic=True, sparse=True)
-print('H2:', H2.shape, H2.dtype, 'G2:', G2.shape, G2.dtype)
+# N = config.patch_w * config.patch_h
+# H2, G2 = make_ldpc(N, config.d_v, config.d_c, seed=config.seed, systematic=True, sparse=True)
+# print('H2:', H2.shape, H2.dtype, 'G2:', G2.shape, G2.dtype)
 N1 = 512
 H, G = make_ldpc(N1, 4, 8, seed=config.seed, systematic=True, sparse=True)
 print('H:', H.shape, H.dtype, 'G:', G.shape, G.dtype)
@@ -79,6 +79,7 @@ def ldpc(x: np.ndarray, pw, ph):
     bitplanes = []
     patches = get_patches(x, pw=pw, ph=ph)
     num_patches, c, _, _ = patches.shape
+    print('patches:', patches.shape)
     '''
     bitplanes = np.zeros([config.num_bitplanes, c, num_patches, pw, ph], dtype=patches.dtype)
     for i in range(config.num_bitplanes):
@@ -95,15 +96,15 @@ def ldpc(x: np.ndarray, pw, ph):
     '''
 
     bitplanes = []
-    for i in range(config.num_bitplanes):
-        mask = 1 << i
-        bitplane = (x & mask) # >> i
-        bin = gray2bin(bitplane) # x: [h, w], bin: [h, w, config.num_bitplanes]
+    for patch in patches:
+        bin = gray2bin(patch) if c == 2 else rgb2bin(patch) # x: [h, w], bin: [h, w, config.num_bitplanes]
         coded, noisy = ldpc_images.encode_img(G, bin, config.snr, seed=config.seed)
         # decoded = ldpc_images.decode_img(G, H, coded, snrconfig.dataset.snr, bin.shape)
         # assert abs((bitplane) - decoded).mean() == 0
         bitplanes.append(coded)
-        # print(f'coded {i}:', coded.mean(), coded.min(), coded.max(), coded.dtype, coded.shape)
+        print(f'patch:', patch.mean(), patch.min(), patch.max(), patch.dtype, patch.shape, patch)
+        print(f'bin:', bin.mean(), bin.min(), bin.max(), bin.dtype, bin.shape, bin)
+        print(f'coded:', coded.mean(), coded.min(), coded.max(), coded.dtype, coded.shape)
     xs = np.zeros([config.num_bitplanes, N1, max(x.shape[-1] for x in bitplanes)], dtype=x.dtype)
     for i in range(config.num_bitplanes):
         xs[i, ..., : bitplanes[i].shape[-1]] = bitplanes[i]
@@ -272,23 +273,22 @@ def main():
 
     dataset_name = config.dataset
     for key in list(data.keys()):
-        cached = f'data/{dataset_name}_{config.map_funcs}_pw{config.patch_w}_ph{config.patch_h}_{key}_100'
-        if os.path.isdir(cached):
+        cached = f'data/{dataset_name}_{config.map_funcs}_pw{config.patch_w}_ph{config.patch_h}_{key}'
+        if 0 or os.path.isdir(cached):
             data[key] = load_from_disk(cached)
-            data[key] = data[key].shuffle().select(range(1*config.per_device_train_batch_size))
+            # data[key] = data[key].shuffle().select(range(1*config.per_device_train_batch_size))
             print(f'loaded {key} from {cached}')
         else:
             data[key] = load_dataset(f'{dataset_name}', cache_dir="data/.cache", split=key)#, streaming=True)#[key]
-            data[key] = data[key].shuffle().select(range(1*config.per_device_train_batch_size))
+            # data[key] = data[key].shuffle().select(range(1*config.per_device_train_batch_size))
             if config.map_funcs:
-                data[key] = data[key].map(map_funcs[config.map_funcs], remove_columns=['img'], num_proc=os.cpu_count())
+                data[key] = data[key].map(map_funcs[config.map_funcs], remove_columns=['img'], num_proc=os.cpu_count(), keep_in_memory=True)
             if '100' in dataset_name:
-                data[key] = data[key].map(cifar100, remove_columns=['coarse_label', 'fine_label'])
+                data[key] = data[key].map(cifar100, remove_columns=['coarse_label', 'fine_label'], keep_in_memory=True)
             data[key].set_format(type='pt')
             os.makedirs('data', exist_ok=True)
-            data[key].save_to_disk(cached)
+            # data[key].save_to_disk(cached)
         print(key, data[key])
-        # data[key + '_loader'] = torch.utils.data.DataLoader(data[key], batch_size=config.per_device_train_batch_size, shuffle=key=='train')
 
     num_classes = 100 if '100' in dataset_name else 10
 
@@ -299,108 +299,110 @@ def main():
         print('image:', images.mean(), images.min(), images.max(), images.dtype, images.shape)
         print('labels:', labels)
         c_in = images.shape[-2]
-        # c_in = 8
         break
-    # exit()
 
-    stats = {}
-    for run in range(config.num_runs):
-        torch.manual_seed(config.seed+run)
-        np.random.seed(config.seed+run)
-        if config.model == 'gru':
-            model = GRU(
-                c_in=c_in,
-                gru_units=config.gru_units,
-                num_classes=num_classes
-            )
-        elif config.model == 'resnet':
-            model = URESNET18(c_in=c_in, num_classes=num_classes)
-        elif config.model == 'vgg':
-            model = VGG(c_in=c_in, num_classes=num_classes)
-        elif config.model == 'vit':
-            conf = ViTConfig.from_pretrained('google/vit-base-patch16-224')
-            conf.hidden_size = c_in
-            model = ViT(config=conf, num_classes=num_classes)
-        model = model.to('cuda')
+    for model_name in ['gru', 'resnet', 'vgg']:
+        stats = {}
+        for run in range(config.num_runs):
+            seed = config.seed + run
+            torch.manual_seed(seed)
+            np.random.seed(seed)
+            if model_name == 'gru':
+                model = GRU(
+                    c_in=c_in,
+                    gru_units=config.gru_units,
+                    num_classes=num_classes
+                )
+            elif model_name == 'resnet':
+                model = URESNET18(c_in=c_in, num_classes=num_classes)
+            elif model_name == 'vgg':
+                model = VGG(c_in=c_in, num_classes=num_classes)
+            elif model_name == 'vit':
+                conf = ViTConfig.from_pretrained('google/vit-base-patch16-224')
+                conf.hidden_size = c_in
+                model = ViT(config=conf, num_classes=num_classes)
+            model = model.to('cuda')
 
-        data_collator = DefaultDataCollator()
-        if 'huffman' in config.map_funcs:
-            class Collator(DefaultDataCollator):
-                def __call__(self, features):
+            data_collator = DefaultDataCollator()
+            if 'huffman' in config.map_funcs:
+                class Collator(DefaultDataCollator):
+                    def __call__(self, features):
+                        fs = []
+                        xs = np.zeros([len(features), features[0]['x'].shape[0], max(z['x'].shape[1] for z in features)]).astype(np.float32)
+                        for i, b in enumerate(features):
+                            xs[i, :, : b['x'].shape[1]] = b['x']
+                            b.pop('x')
+                            fs.append(b)
+                        output = super().__call__(fs)
+                        output['x'] = torch.tensor(xs, device=output['labels'].device)
+                        return output
+                data_collator = Collator()
+            else:
+                def collate(features):
                     fs = []
-                    xs = np.zeros([len(features), features[0]['x'].shape[0], max(z['x'].shape[1] for z in features)]).astype(np.float32)
+                    xs = []
                     for i, b in enumerate(features):
-                        xs[i, :, : b['x'].shape[1]] = b['x']
-                        b.pop('x')
-                        fs.append(b)
-                    output = super().__call__(fs)
-                    output['x'] = torch.tensor(xs, device=output['labels'].device)
+                        xs.append(map_funcs[config.map_funcs](b)['x'])
+                        fs.append(b['label'])
+                    xs = torch.stack(xs, 0)
+                    ys = torch.tensor(fs).long()
+                    output = {
+                        'x': xs,
+                        'labels': ys
+                    }
                     return output
-            data_collator = Collator()
-        else:
-            def collate(features):
-                # xs = np.zeros([len(features), 8, 16384]).astype(np.float32)
-                # fs = np.ones(len(features))
-                fs = []
-                xs = []
-                for i, b in enumerate(features):
-                    xs.append(map_funcs[config.map_funcs](b)['x'])
-                    fs.append(b['label'])
-                xs = torch.stack(xs, 0)
-                ys = torch.tensor(fs).long()
-                output = {
-                    'x': xs,
-                    'labels': ys
-                }
-                return output
-            # data_collator = collate
-        training_args = TrainingArguments(
-            remove_unused_columns=False,
-            seed=config.seed+run,
-            data_seed=config.pop('seed')+run,
-            output_dir=config.output_dir,
-            learning_rate=config.learning_rate,
-            per_device_train_batch_size=config.per_device_train_batch_size,
-            per_device_eval_batch_size=config.per_device_eval_batch_size,
-            gradient_accumulation_steps=config.gradient_accumulation_steps,
-            gradient_checkpointing=config.gradient_checkpointing,
-            max_grad_norm=config.max_grad_norm,
-            bf16=config.bf16,
-            fp16=config.fp16,
-            num_train_epochs=config.num_train_epochs,
-            weight_decay=config.weight_decay,
-            lr_scheduler_type=config.lr_scheduler_type,
-            warmup_ratio=config.warmup_ratio,
-            do_eval=config.do_eval,
-            evaluation_strategy=config.evaluation_strategy,
-            eval_steps=config.eval_steps,
-            logging_strategy=config.logging_strategy,
-            logging_steps=config.logging_steps,
-            save_strategy=config.save_strategy,
-            save_total_limit=config.save_total_limit,
-            report_to=config.report_to,
-        )
+                # data_collator = collate
+            training_args = TrainingArguments(
+                remove_unused_columns=False,
+                seed=seed,
+                data_seed=seed,
+                output_dir=config.output_dir,
+                learning_rate=config.learning_rate,
+                per_device_train_batch_size=config.per_device_train_batch_size,
+                per_device_eval_batch_size=config.per_device_eval_batch_size,
+                gradient_accumulation_steps=config.gradient_accumulation_steps,
+                gradient_checkpointing=config.gradient_checkpointing,
+                max_grad_norm=config.max_grad_norm,
+                bf16=config.bf16,
+                fp16=config.fp16,
+                num_train_epochs=config.num_train_epochs,
+                weight_decay=config.weight_decay,
+                lr_scheduler_type=config.lr_scheduler_type,
+                warmup_ratio=config.warmup_ratio,
+                do_eval=config.do_eval,
+                eval_strategy=config.eval_strategy,
+                eval_steps=config.eval_steps,
+                logging_strategy=config.logging_strategy,
+                logging_steps=config.logging_steps,
+                save_strategy=config.save_strategy,
+                save_total_limit=config.save_total_limit,
+                report_to=config.report_to,
+            )
 
-        trainer = Trainer(
-            model=model,
-            args=training_args,
-            train_dataset=data['train'],
-            eval_dataset=data['test'],
-            data_collator=data_collator,
-            compute_metrics=compute_metrics,
-        )
+            trainer = Trainer(
+                model=model,
+                args=training_args,
+                train_dataset=data['train'],
+                eval_dataset=data['test'],
+                data_collator=data_collator,
+                compute_metrics=compute_metrics,
+            )
 
-        trainer.train()
+            trainer.train()
 
-        m = trainer.evaluate(eval_dataset=data['test'])
-        print(f'run {run}:', m)
-        for k, v in m.items():
-            stats[k] = stats.get(k, []) + [v]
-        # '''
-    print('******** mean ********')
-    for k in stats:
-        stats[k] = np.array(stats[k])
-        print(f'{k}:', f'{np.mean(stats[k]):.1f} +- {np.std(stats[k]):.1f}')
+            m = trainer.evaluate(eval_dataset=data['test'])
+            print(f'run {run}:', m)
+            for k, v in m.items():
+                stats[k] = stats.get(k, []) + [v]
+            # '''
+        print(f'******** mean of {model_name} ********')
+        for k in stats:
+            stats[k] = np.array(stats[k])
+            for x in ['accuracy', 'f1', 'precision', 'recall']:
+                if x in k:
+                    stats[k] *= 100
+                    break
+            print(f'{k}:', f'{np.mean(stats[k]):.1f} +- {np.std(stats[k]):.1f}')
 
 
 if __name__ == '__main__':

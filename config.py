@@ -29,6 +29,6 @@ def parse_args():
 # config.args.update(vars(args))
 
 config = parse_args()
-print(OmegaConf.to_yaml(config))
+# print(OmegaConf.to_yaml(config))
 
 
