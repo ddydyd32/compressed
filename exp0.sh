@@ -24,17 +24,17 @@ echo "dataset: $dataset"
 #         --fullbit True \
 #         --output_dir "logs" > "logs/${output_dir}.log"
 # done
-
 MAP_FUNCS2=(
     yuv_ldpc
     rgb_ldpc
+    yuv_huffman
+    rgb_huffman
 )
 PATCH_W=(
-    # 2
-    4
+    # 4
     # 8
     # 16
-    # 32
+    32
 )
 for map_funcs in ${MAP_FUNCS2[@]} ; do
     echo "  map_funcs: $map_funcs"

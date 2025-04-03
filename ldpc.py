@@ -79,7 +79,6 @@ def ldpc(x: np.ndarray, pw, ph):
     bitplanes = []
     patches = get_patches(x, pw=pw, ph=ph)
     num_patches, c, _, _ = patches.shape
-    print('patches:', patches.shape)
     '''
     bitplanes = np.zeros([config.num_bitplanes, c, num_patches, pw, ph], dtype=patches.dtype)
     for i in range(config.num_bitplanes):
