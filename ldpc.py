@@ -158,7 +158,7 @@ def huffman(x: np.ndarray, pw, ph, fullbit=True):
     _xs = np.concatenate(_xs).astype(np.int32)
     y = huffman_encode(_xs.reshape(-1), 'prefix', save_dir='./')
     ml = max(len(x) for x in y)
-    if fullbit:
+    if 1:
         _xs = [code2np(x, max_len=ml) for x in y]
     else:
         _xs = [code2fp32(x, scale=False) for x in y]
@@ -179,7 +179,7 @@ def huffman_pix(x: np.ndarray, pw, ph, fullbit=True):
     _xs = np.asarray(_xs).astype(np.int32)
     y = huffman_encode(_xs.reshape(-1), 'prefix', save_dir='./')
     ml = max(len(x) for x in y)
-    if fullbit:
+    if 1:
         _xs = [code2np(x, max_len=ml) for x in y]
     else:
         _xs = [code2fp32(x, scale=False) for x in y]
