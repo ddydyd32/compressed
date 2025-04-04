@@ -261,7 +261,6 @@ map_funcs = {
     'rgb_huffman': rgb_huffman,
 }
 
-
 def main():
     os.makedirs(config.output_dir, exist_ok=True)
     # with open(os.path.join(config.output_dir, '_config.yaml'), 'w') as file:
@@ -279,18 +278,18 @@ def main():
         cached = f'data/{dataset_name}_{config.map_funcs}_pw{config.patch_w}_ph{config.patch_h}_{key}'
         if 0 or os.path.isdir(cached):
             data[key] = load_from_disk(cached)
-            # data[key] = data[key].shuffle().select(range(1*config.per_device_train_batch_size))
+            # data[key] = data[key].shuffle().select(range(5*config.per_device_train_batch_size))
             print(f'loaded {key} from {cached}')
         else:
             data[key] = load_dataset(f'{dataset_name}', cache_dir="data/.cache", split=key)#, streaming=True)#[key]
-            # data[key] = data[key].shuffle().select(range(1*config.per_device_train_batch_size))
+            # data[key] = data[key].shuffle().select(range(5*config.per_device_train_batch_size))
             if config.map_funcs:
                 data[key] = data[key].map(map_funcs[config.map_funcs], remove_columns=['img'], num_proc=os.cpu_count(), keep_in_memory=True)
             if '100' in dataset_name:
                 data[key] = data[key].map(cifar100, remove_columns=['coarse_label', 'fine_label'], keep_in_memory=True)
             data[key].set_format(type='pt')
             os.makedirs('data', exist_ok=True)
-            # data[key].save_to_disk(cached)
+            data[key].save_to_disk(cached)
         print(key, data[key])
 
     num_classes = 100 if '100' in dataset_name else 10

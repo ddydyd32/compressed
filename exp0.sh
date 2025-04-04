@@ -8,7 +8,7 @@ MAP_FUNCS=(
     rgb
 )
 num_bitplanes=8
-dataset="cifar10"
+dataset="cifar100"
 echo "dataset: $dataset"
 # for map_funcs in ${MAP_FUNCS[@]} ; do
 #     patch_w=32
@@ -25,13 +25,10 @@ echo "dataset: $dataset"
 #         --output_dir "logs" > "logs/${output_dir}.log"
 # done
 MAP_FUNCS2=(
-    yuv_ldpc
     rgb_ldpc
-    yuv_huffman
-    rgb_huffman
 )
 PATCH_W=(
-    # 4
+    4
     # 8
     # 16
     32
